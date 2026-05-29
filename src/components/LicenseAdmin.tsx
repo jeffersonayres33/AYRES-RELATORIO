@@ -125,10 +125,10 @@ export default function LicenseAdmin() {
       <div className="lg:col-span-2 space-y-6">
         <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs relative overflow-hidden">
           
-          <div className="absolute right-0 top-0 translate-x-12 -translate-y-12 w-48 h-48 rounded-full bg-indigo-600/5 blur-3xl pointer-events-none" />
+          <div className="absolute right-0 top-0 translate-x-12 -translate-y-12 w-48 h-48 rounded-full bg-violet-600/5 blur-3xl pointer-events-none" />
 
           <div className="flex items-center gap-3 border-b border-slate-100 pb-4 mb-5">
-            <div className="p-2.5 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600">
+            <div className="p-2.5 rounded-xl bg-violet-50 border border-violet-100 text-violet-600">
               <ShieldCheck className="w-5.5 h-5.5 animate-pulse" />
             </div>
             <div>
@@ -149,11 +149,11 @@ export default function LicenseAdmin() {
                   type="text"
                   value={volumeSerial}
                   onChange={(e) => setVolumeSerial(e.target.value.toUpperCase())}
-                  className="w-full bg-slate-50 border border-slate-200 pl-11 pr-3 py-2.5 text-xs font-mono font-bold rounded-xl text-slate-850 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all"
+                  className="w-full bg-slate-50 border border-slate-200 pl-11 pr-3 py-2.5 text-xs font-mono font-bold rounded-xl text-slate-850 focus:outline-none focus:border-violet-500 focus:bg-white transition-all"
                 />
                 <button
                   onClick={handleGenerateFi}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs px-5 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shrink-0 active:scale-[0.98]"
+                  className="bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs px-5 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shrink-0 active:scale-[0.98]"
                 >
                   Calcular Fi <Play className="w-3.5 h-3.5" />
                 </button>
@@ -191,19 +191,19 @@ export default function LicenseAdmin() {
                 value={enteredKey}
                 onChange={(e) => setEnteredKey(e.target.value)}
                 placeholder="Insira a chave Pi de validação..."
-                className="flex-1 bg-slate-50 border border-slate-200 p-3 text-xs font-mono font-bold text-slate-805 focus:outline-none focus:border-indigo-500 focus:bg-white rounded-xl transition-all"
+                className="flex-1 bg-slate-50 border border-slate-200 p-3 text-xs font-mono font-bold text-slate-805 focus:outline-none focus:border-violet-500 focus:bg-white rounded-xl transition-all"
               />
               
               <button
                 onClick={handleAutoGeneratePi}
-                className="bg-white hover:bg-slate-55 text-indigo-600 hover:text-indigo-700 font-extrabold text-xs p-3 rounded-xl transition-colors border border-slate-200 cursor-pointer shadow-xs shrink-0"
+                className="bg-white hover:bg-slate-55 text-violet-600 hover:text-violet-700 font-extrabold text-xs p-3 rounded-xl transition-colors border border-slate-200 cursor-pointer shadow-xs shrink-0"
               >
                 Injetar Chave Padrão
               </button>
 
               <button
                 onClick={handleActivate}
-                className="bg-indigo-600 hover:bg-indigo-500 border border-indigo-505 text-white font-extrabold text-xs px-6 py-3 rounded-xl transition-all shadow-md cursor-pointer active:scale-[0.98]"
+                className="bg-violet-600 hover:bg-violet-500 border border-violet-500 text-white font-extrabold text-xs px-6 py-3 rounded-xl transition-all shadow-md cursor-pointer active:scale-[0.98]"
               >
                 Desbloquear Console
               </button>
@@ -219,14 +219,14 @@ export default function LicenseAdmin() {
         <div className="bg-[#0b0f19] rounded-3xl p-5 shadow-lg border border-[#161f30] space-y-3 relative overflow-hidden">
           <div className="flex items-center justify-between border-b border-[#161f30] pb-2">
             <div className="flex items-center gap-1.5 font-mono text-[9.5px] font-bold tracking-widest text-[#6c7d93] uppercase select-none">
-              <Terminal className="w-4 h-4 text-indigo-400 animate-pulse" /> Console de Diagnósticos Criptográficos
+              <Terminal className="w-4 h-4 text-violet-400 animate-pulse" /> Console de Diagnósticos Criptográficos
             </div>
-            <span className="w-2 h-2 rounded-full bg-indigo-500 animate-ping" />
+            <span className="w-2 h-2 rounded-full bg-violet-500 animate-ping" />
           </div>
 
           <div className="font-mono text-[10.5px] space-y-1.5 h-[140px] overflow-y-auto pr-1">
             {consoleLogs.map((log, i) => (
-              <div key={i} className="leading-relaxed odd:text-slate-400 even:text-indigo-400 font-medium">
+              <div key={i} className="leading-relaxed odd:text-slate-400 even:text-violet-400 font-medium">
                 {log}
               </div>
             ))}
@@ -271,7 +271,7 @@ export default function LicenseAdmin() {
               </div>
               <div className="flex justify-between py-1 border-b border-slate-100">
                 <span>Vencimento da Licença:</span>
-                <span className="font-extrabold text-indigo-600">{license.expiresAt}</span>
+                <span className="font-extrabold text-violet-600">{license.expiresAt}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-slate-100 pr-0.5">
                 <span className="truncate max-w-[130px]">Chave Pi gravada:</span>

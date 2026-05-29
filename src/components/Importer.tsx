@@ -326,7 +326,7 @@ export default function Importer({ onDataImported }: ImporterProps) {
                 </span>
                 <button
                   onClick={() => downloadSampleXML(target.id)}
-                  className="text-[10px] text-indigo-700 hover:text-indigo-800 flex items-center gap-1 font-black bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded cursor-pointer transition-all"
+                  className="text-[10px] text-violet-700 hover:text-violet-800 flex items-center gap-1 font-black bg-violet-50 border border-violet-100 px-2 py-0.5 rounded cursor-pointer transition-all"
                   title="Baixar XML modelo técnico para teste"
                 >
                   <Download className="w-3 h-3" /> Modelo {target.modelName}
@@ -336,7 +336,7 @@ export default function Importer({ onDataImported }: ImporterProps) {
               <div
                 className={`flex-1 border-2 border-dashed rounded-2xl p-6 transition-all flex flex-col items-center justify-center text-center cursor-pointer min-h-[190px] relative overflow-hidden group ${
                   dragActive[target.id]
-                    ? "border-indigo-500 bg-indigo-50"
+                    ? "border-violet-500 bg-violet-50"
                     : "border-slate-200 hover:border-slate-350 bg-slate-50/50 hover:bg-slate-50"
                 }`}
                 onDragOver={(e) => handleDrag(e, target.id, true)}
@@ -353,7 +353,7 @@ export default function Importer({ onDataImported }: ImporterProps) {
                 />
 
                 <div className="p-3 bg-white border border-slate-200 shadow-xs rounded-2xl text-slate-400 mb-3 group-hover:scale-110 transition-transform">
-                  <Upload className="w-6 h-6 text-indigo-500" />
+                  <Upload className="w-6 h-6 text-violet-500" />
                 </div>
                 
                 <p className="text-xs font-bold text-slate-800">Arraste ou clique para enviar</p>
@@ -396,7 +396,7 @@ export default function Importer({ onDataImported }: ImporterProps) {
         <div className="bg-white rounded-3xl border border-slate-200/95 p-6 shadow-sm space-y-4">
           <div className="flex items-center justify-between border-b border-slate-150 pb-3">
             <div className="flex items-center gap-2">
-              <Code className="w-5 h-5 text-indigo-500" />
+              <Code className="w-5 h-5 text-violet-500" />
               <div>
                 <h4 className="font-extrabold text-slate-900 text-sm font-display tracking-widest uppercase">
                   Auditor Sintático de XML
@@ -419,7 +419,7 @@ export default function Importer({ onDataImported }: ImporterProps) {
               <div className="font-mono text-xs space-y-2 text-slate-600">
                 <div className="flex justify-between py-1 border-b border-slate-100">
                   <span>Tipo do Arquivo:</span>
-                  <span className="font-bold uppercase text-indigo-600">{inspectedXmlType}</span>
+                  <span className="font-bold uppercase text-violet-600">{inspectedXmlType}</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-100">
                   <span>Encoding XML:</span>
@@ -448,15 +448,6 @@ export default function Importer({ onDataImported }: ImporterProps) {
         </div>
       )}
 
-      {/* Guidelines and help block */}
-      <div className="bg-white border border-slate-200/90 rounded-3xl p-5 shadow-xs">
-        <h4 className="font-extrabold text-sm font-display uppercase text-slate-900 flex items-center gap-2 mb-2">
-          <FileCode2 className="w-5 h-5 text-indigo-500" /> Método de Cruzamento de Dados (CRF-AM)
-        </h4>
-        <p className="text-xs leading-relaxed text-slate-500 max-w-4xl font-medium">
-          Nossa arquitetura cruza os dados do cadastro original do <strong>SISCON (lote `sisconxxxx.xml`)</strong> com os desvios, notificações e autuações extraídos pelo aplicativo móvel <strong>FEM (`xxxx_0.xml`)</strong>, complementados com os registros de campo de <strong>empresas irregulares/clandestinas (`xxxx_20.xml`)</strong> que operam sem licenciamento prévio no Amazonas. Isso permite gerar relatórios oficiais consolidados de alta relevância técnica do CRF-AM para órgãos competentes.
-        </p>
-      </div>
     </div>
   );
 }

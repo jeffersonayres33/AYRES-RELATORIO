@@ -85,11 +85,11 @@ export default function Dashboard({ estabelecimentos, termos, checklists, onNavi
     <div className="space-y-6 text-slate-800">
       {/* Introduction Greeting card */}
       <div className="bg-white border border-slate-200 rounded-3xl p-6 relative overflow-hidden shadow-xs">
-        <div className="absolute right-0 top-0 translate-x-12 -translate-y-12 w-64 h-64 rounded-full bg-indigo-600/5 blur-3xl pointer-events-none" />
+        <div className="absolute right-0 top-0 translate-x-12 -translate-y-12 w-64 h-64 rounded-full bg-violet-600/5 blur-3xl pointer-events-none" />
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div>
-            <h2 className="text-xl md:text-2xl font-extrabold tracking-tight font-display text-slate-900">
-              Painel Integrado de Gestão e Auditoria <span className="text-indigo-600">Siscon AM</span>
+            <h2 className="text-xl md:text-2xl font-extrabold tracking-tight font-display text-slate-900 leading-tight">
+              Painel Integrado de Gestão e automação de Relatórios de inspeções
             </h2>
             <p className="text-slate-500 text-xs md:text-sm mt-1 max-w-2xl leading-relaxed font-medium">
               Consolidação analítica de termos de inspeção, relatórios de RDC 44, dados cadastrais e escalas de responsáveis técnicos para os Fiscais Farmacêuticos do CRF-AM no interior do Amazonas.
@@ -108,7 +108,7 @@ export default function Dashboard({ estabelecimentos, termos, checklists, onNavi
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* KPI 1 */}
         <div className="bg-white border border-slate-200 hover:border-slate-350 hover:shadow-xs rounded-2xl p-5 shadow-xs flex items-center gap-4 transition-all duration-300 transform hover:-translate-y-0.5 group cursor-pointer">
-          <div className="p-3 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600 group-hover:scale-110 transition-transform duration-300">
+          <div className="p-3 rounded-xl bg-violet-50 border border-violet-100 text-violet-600 group-hover:scale-110 transition-transform duration-300">
             <FileText className="w-5.5 h-5.5" />
           </div>
           <div>
@@ -158,7 +158,7 @@ export default function Dashboard({ estabelecimentos, termos, checklists, onNavi
         <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs lg:col-span-2 space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
             <div className="flex items-center gap-2">
-              <Activity className="w-5.5 h-5.5 text-indigo-600" />
+              <Activity className="w-5.5 h-5.5 text-violet-600" />
               <div>
                 <h3 className="font-extrabold text-slate-900 text-sm font-display tracking-wide uppercase">
                   Volume de Atividades de Fiscalização
@@ -177,7 +177,7 @@ export default function Dashboard({ estabelecimentos, termos, checklists, onNavi
                 placeholder="Filtrar Município..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white w-full sm:w-48 transition-all"
+                className="bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-violet-500 focus:bg-white w-full sm:w-48 transition-all"
               />
             </div>
           </div>
@@ -192,62 +192,95 @@ export default function Dashboard({ estabelecimentos, termos, checklists, onNavi
             </div>
           ) : (
             <div className="space-y-6">
-              {/* Responsive SVG Chart */}
-              <div className="h-56 w-full bg-slate-50/50 rounded-2xl border border-slate-150 p-4 flex flex-col justify-end relative">
-                <span className="absolute top-2 left-3 text-[9px] font-mono font-black text-slate-400 uppercase tracking-widest">
-                  Gráfico de Atos: Atividades de Fiscalização (CRF-AM)
+              {/* Beautiful Modern Multi-Metric Horizontal Bar List */}
+              <div className="space-y-4 bg-slate-50/70 border border-slate-150 p-5 rounded-2xl">
+                <span className="text-[10px] font-black font-mono text-slate-400 uppercase tracking-widest block leading-none mb-1">
+                  DETALHAMENTO DE ATIVIDADES DE CAMPO POR MUNICÍPIO
                 </span>
                 
-                {selectedChartCity && (
-                  <div className="absolute top-8 right-3 bg-slate-900 text-white border border-slate-800 px-3.5 py-2.5 rounded-xl text-xs shadow-md z-30" id="chart-tooltip">
-                    <p className="font-bold uppercase text-indigo-300">{selectedChartCity}</p>
-                    {(() => {
-                      const cityObj = cityList.find(c => c.cidade === selectedChartCity);
-                      return cityObj ? (
-                        <div className="grid grid-cols-2 gap-x-3 text-[10px] mt-1.5 font-mono text-slate-300">
-                          <span>Inspeções: <strong className="text-white">{cityObj.inspecoes}</strong></span>
-                          <span>Autos: <strong className="text-rose-400">{cityObj.autos}</strong></span>
-                          <span>Intimações: <strong className="text-amber-400">{cityObj.intimacoes}</strong></span>
-                          <span>Novas IE: <strong className="text-emerald-400">{cityObj.novosEstabelecimentos}</strong></span>
-                        </div>
-                      ) : null;
-                    })()}
-                  </div>
-                )}
-
-                {/* SVG Visual Bars */}
-                <div className="flex h-36 items-end justify-around px-2 z-10">
-                  {cityList.map((c, idx) => {
-                    const maxVal = Math.max(...cityList.map(item => item.inspecoes), 1);
-                    const barHeightPercent = (c.inspecoes / maxVal) * 100;
-                    const hasAutos = c.autos > 0;
+                <div className="space-y-4">
+                  {filteredCityList.map((c, idx) => {
+                    // Maximum value across all metrics to normalize the fill percentages accurately
+                    const maxMetricValue = Math.max(
+                      ...cityList.map(item => Math.max(item.inspecoes, item.intimacoes, item.autos, item.novosEstabelecimentos)),
+                      1
+                    );
                     
+                    const pInspec = (c.inspecoes / maxMetricValue) * 100;
+                    const pIntima = (c.intimacoes / maxMetricValue) * 100;
+                    const pAuto = (c.autos / maxMetricValue) * 100;
+                    const pNovo = (c.novosEstabelecimentos / maxMetricValue) * 100;
+
                     return (
-                      <div 
-                        key={idx} 
-                        className="flex flex-col items-center flex-1 max-w-[40px] group cursor-pointer"
-                        onMouseEnter={() => setSelectedChartCity(c.cidade)}
-                        onMouseLeave={() => setSelectedChartCity(null)}
-                      >
-                        <div className="w-full bg-slate-200 border border-slate-300/60 group-hover:border-indigo-400 rounded-t-lg transition-all duration-300 relative" style={{ height: `${barHeightPercent}%` }}>
-                          <div className="absolute inset-0 bg-gradient-to-t from-indigo-500/80 to-indigo-600 opacity-80 rounded-t-lg" />
-                          {hasAutos && (
-                            <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1.5 w-3 h-3 bg-rose-500 border-2 border-white rounded-full animate-ping" />
-                          )}
+                      <div key={idx} className="bg-white border border-slate-150 p-4 rounded-xl shadow-xs space-y-3 hover:border-violet-300 transition-colors">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                          <span className="font-extrabold text-xs text-slate-800 uppercase flex items-center gap-1.5">
+                            <MapPin className="w-3.5 h-3.5 text-violet-650" />
+                            {c.cidade}
+                          </span>
+                          <span className="text-[9px] font-mono text-slate-400">
+                            Atos Registrados: <strong className="text-slate-700">{c.inspecoes + c.intimacoes + c.autos + c.novosEstabelecimentos}</strong>
+                          </span>
                         </div>
-                        <span className="text-[8px] font-mono mt-2 font-bold text-slate-400 truncate max-w-[32px] uppercase select-none">
-                          {c.cidade.slice(0, 4)}
-                        </span>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                          {/* Inspeções */}
+                          <div className="space-y-1">
+                            <div className="flex justify-between items-center text-[9px] font-bold text-slate-500">
+                              <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-violet-600 rounded-full" /> Inspeções</span>
+                              <span className="font-mono font-bold text-slate-800">{c.inspecoes}</span>
+                            </div>
+                            <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                              <div className="bg-violet-650 h-full rounded-full transition-all duration-500" style={{ width: `${pInspec}%` }} />
+                            </div>
+                          </div>
+
+                          {/* Intimações */}
+                          <div className="space-y-1">
+                            <div className="flex justify-between items-center text-[9px] font-bold text-slate-500">
+                              <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-amber-500 rounded-full" /> Intimações</span>
+                              <span className="font-mono font-bold text-amber-600">{c.intimacoes}</span>
+                            </div>
+                            <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                              <div className="bg-amber-500 h-full rounded-full transition-all duration-500" style={{ width: `${pIntima}%` }} />
+                            </div>
+                          </div>
+
+                          {/* Autos */}
+                          <div className="space-y-1">
+                            <div className="flex justify-between items-center text-[9px] font-bold text-slate-500">
+                              <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-rose-500 rounded-full" /> Autos</span>
+                              <span className="font-mono font-bold text-rose-600">{c.autos}</span>
+                            </div>
+                            <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                              <div className="bg-rose-500 h-full rounded-full transition-all duration-500" style={{ width: `${pAuto}%` }} />
+                            </div>
+                          </div>
+
+                          {/* Novas Empresas */}
+                          <div className="space-y-1">
+                            <div className="flex justify-between items-center text-[9px] font-bold text-slate-500">
+                              <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" /> Novas Empresas</span>
+                              <span className="font-mono font-bold text-emerald-600">{c.novosEstabelecimentos}</span>
+                            </div>
+                            <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                              <div className="bg-emerald-500 h-full rounded-full transition-all duration-500" style={{ width: `${pNovo}%` }} />
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     );
                   })}
                 </div>
 
-                <div className="flex justify-between items-center text-[9px] font-mono text-slate-500 mt-2 px-2 border-t border-slate-200 pt-2">
-                  <span>Modulado por Intervalos de Inspeção</span>
-                  <div className="flex gap-2.5">
-                    <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-indigo-500 rounded-full" /> Inspeções</span>
-                    <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-rose-500 rounded-full" /> Tem Infração</span>
+                {/* SUM FOOTER OF THE WIDGET */}
+                <div className="flex flex-wrap items-center justify-between gap-4 text-[11px] font-bold text-slate-500 mt-4 px-4 py-3 bg-white hover:border-slate-300 transition-all rounded-xl border border-slate-200">
+                  <span className="font-mono text-[9px] uppercase tracking-wider text-slate-400">Somatório Geral da Viagem:</span>
+                  <div className="flex flex-wrap gap-x-6 gap-y-2">
+                    <span className="flex items-center gap-1.5"><span className="w-2 rounded-full bg-violet-600 aspect-square" /> Inspeções: <strong className="text-slate-800 font-mono text-[12px]">{cityList.reduce((acc, c) => acc + c.inspecoes, 0)}</strong></span>
+                    <span className="flex items-center gap-1.5"><span className="w-2 rounded-full bg-amber-500 aspect-square" /> Intimações: <strong className="text-slate-800 font-mono text-[12px]">{cityList.reduce((acc, c) => acc + c.intimacoes, 0)}</strong></span>
+                    <span className="flex items-center gap-1.5"><span className="w-2 rounded-full bg-rose-500 aspect-square" /> Autos: <strong className="text-slate-800 font-mono text-[12px]">{cityList.reduce((acc, c) => acc + c.autos, 0)}</strong></span>
+                    <span className="flex items-center gap-1.5"><span className="w-2 rounded-full bg-emerald-500 aspect-square" /> Novas Empresas: <strong className="text-slate-800 font-mono text-[12px]">{cityList.reduce((acc, c) => acc + c.novosEstabelecimentos, 0)}</strong></span>
                   </div>
                 </div>
               </div>
@@ -268,7 +301,7 @@ export default function Dashboard({ estabelecimentos, termos, checklists, onNavi
                     {filteredCityList.map((c, i) => (
                       <tr key={i} className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
                         <td className="py-3.5 px-2 font-extrabold text-slate-800 flex items-center gap-1.5 uppercase">
-                          <MapPin className="w-3.5 h-3.5 text-indigo-600" />
+                          <MapPin className="w-3.5 h-3.5 text-violet-600" />
                           {c.cidade}
                         </td>
                         <td className="py-3.5 text-center font-mono font-bold text-slate-600">{c.inspecoes}</td>
@@ -289,7 +322,7 @@ export default function Dashboard({ estabelecimentos, termos, checklists, onNavi
           {/* Active Field Inspectors */}
           <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs space-y-4">
             <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
-              <User className="w-5 h-5 text-indigo-600" />
+              <User className="w-5 h-5 text-violet-600" />
               <div>
                 <h3 className="font-extrabold text-slate-900 text-sm font-display tracking-wide uppercase">Inspetores Ativos</h3>
                 <p className="text-[10px] text-slate-400">Equipe ativa nos termos de campo importados</p>
@@ -305,7 +338,7 @@ export default function Dashboard({ estabelecimentos, termos, checklists, onNavi
                 {activeInspectors.map((ins, i) => (
                   <div key={i} className="flex items-center justify-between p-3 bg-slate-50 border border-slate-150 hover:border-slate-250 rounded-xl transition-all duration-200">
                     <span className="font-extrabold text-xs text-slate-800 uppercase truncate max-w-[150px]">{ins.nome}</span>
-                    <span className="text-[10.5px] font-mono bg-white border border-slate-205 text-indigo-600 px-2.5 py-1 rounded-lg font-black shrink-0 shadow-2xs">
+                    <span className="text-[10.5px] font-mono bg-white border border-slate-205 text-violet-600 px-2.5 py-1 rounded-lg font-black shrink-0 shadow-2xs">
                       {ins.count} {ins.count === 1 ? "ação" : "ações"}
                     </span>
                   </div>

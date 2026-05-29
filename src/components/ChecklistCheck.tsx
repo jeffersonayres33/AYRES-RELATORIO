@@ -80,8 +80,8 @@ export default function ChecklistCheck({ estabelecimentos, checklists, rts }: Ch
   // Filtered Checklist items
   const getFilterIconColor = (btnFilter: string) => {
     return questionsFilter === btnFilter 
-      ? "bg-indigo-600 border-indigo-500 text-white shadow-sm"
-      : "bg-slate-50 border border-slate-200 text-slate-600 hover:text-indigo-600";
+      ? "bg-violet-600 border-violet-500 text-white shadow-sm"
+      : "bg-slate-50 border border-slate-200 text-slate-600 hover:text-violet-600";
   };
 
   return (
@@ -91,7 +91,7 @@ export default function ChecklistCheck({ estabelecimentos, checklists, rts }: Ch
         
         <div className="border-b border-slate-100 pb-3">
           <h3 className="font-extrabold font-display text-slate-900 text-sm uppercase tracking-wider flex items-center gap-2">
-            <Building className="w-4 h-4 text-indigo-600" /> Estabelecimentos ({filteredEstabs.length})
+            <Building className="w-4 h-4 text-violet-600" /> Estabelecimentos ({filteredEstabs.length})
           </h3>
           <p className="text-[10px] text-slate-400 mt-1 font-medium">Selecione uma farmácia cadastrada</p>
         </div>
@@ -106,7 +106,7 @@ export default function ChecklistCheck({ estabelecimentos, checklists, rts }: Ch
             placeholder="Buscar por fantasia, IE, cidade..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-850 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white w-full transition-all"
+            className="bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-855 placeholder-slate-400 focus:outline-none focus:border-violet-500 focus:bg-white w-full transition-all"
           />
         </div>
         
@@ -124,7 +124,7 @@ export default function ChecklistCheck({ estabelecimentos, checklists, rts }: Ch
                 onClick={() => setSelectedInscricao(e.inscricao)}
                 className={`w-full text-left p-4 rounded-2xl transition-all border ${
                   isSelected
-                    ? "bg-indigo-600 border-indigo-500 text-white shadow-md relative overflow-hidden"
+                    ? "bg-violet-600 border-violet-500 text-white shadow-md relative overflow-hidden"
                     : "bg-white border-slate-150 text-slate-705 hover:border-slate-350 hover:bg-slate-50"
                 }`}
                 id={`est-item-${e.inscricao}`}
@@ -146,7 +146,7 @@ export default function ChecklistCheck({ estabelecimentos, checklists, rts }: Ch
                   )}
                 </div>
                 
-                <div className={`text-[10px] mt-1.5 flex items-center justify-between font-bold ${isSelected ? "text-indigo-100" : "text-slate-400"}`}>
+                <div className={`text-[10px] mt-1.5 flex items-center justify-between font-bold ${isSelected ? "text-violet-100" : "text-slate-400"}`}>
                   <span>I.E: <span className="font-mono font-bold">{e.inscricao}</span></span>
                   <span className="uppercase text-[9px]">{e.cidade}</span>
                 </div>
@@ -155,8 +155,8 @@ export default function ChecklistCheck({ estabelecimentos, checklists, rts }: Ch
                 {checklistForThis ? (
                   <div className="mt-3.5 space-y-1">
                     <div className="flex justify-between items-center text-[9px] font-bold">
-                      <span className={isSelected ? "text-indigo-200" : "text-slate-400"}>Taxa Conformidade</span>
-                      <span className={isSelected ? "text-white" : "text-indigo-600 font-mono font-black"}>{compliance}%</span>
+                      <span className={isSelected ? "text-violet-200" : "text-slate-400"}>Taxa Conformidade</span>
+                      <span className={isSelected ? "text-white" : "text-violet-600 font-mono font-black"}>{compliance}%</span>
                     </div>
                     <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
                       <div 
@@ -172,7 +172,7 @@ export default function ChecklistCheck({ estabelecimentos, checklists, rts }: Ch
                     </div>
                   </div>
                 ) : (
-                  <div className={`mt-3 text-[9px] font-bold tracking-widest uppercase block ${isSelected ? "text-indigo-200" : "text-slate-350"}`}>
+                  <div className={`mt-3 text-[9px] font-bold tracking-widest uppercase block ${isSelected ? "text-violet-200" : "text-slate-355"}`}>
                     Sem Checklist Integrado
                   </div>
                 )}
@@ -188,13 +188,13 @@ export default function ChecklistCheck({ estabelecimentos, checklists, rts }: Ch
           
           {/* Header information */}
           <div className="border-b border-slate-150 pb-5 mb-5 space-y-2">
-            <span className="text-[10px] font-extrabold font-mono text-indigo-600 tracking-widest block uppercase">DADOS VIGILÂNCIA SANITÁRIA</span>
+            <span className="text-[10px] font-extrabold font-mono text-violet-600 tracking-widest block uppercase">DADOS VIGILÂNCIA SANITÁRIA</span>
             <h2 className="text-xl font-extrabold text-slate-900 font-display uppercase tracking-tight">{selectedEstab?.fantasia}</h2>
             <p className="text-xs text-slate-500 leading-relaxed uppercase font-semibold">{selectedEstab?.razaoSocial}</p>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 pt-4 text-xs font-semibold text-slate-600">
               <div className="leading-snug">Endereço: <span className="text-slate-905 font-extrabold block mt-0.5">{selectedEstab?.endereco}, {selectedEstab?.bairro}</span></div>
-              <div className="leading-snug">Município de Atuação: <span className="text-indigo-600 font-extrabold block mt-0.5 uppercase">{selectedEstab?.cidade}</span></div>
+              <div className="leading-snug">Município de Atuação: <span className="text-violet-600 font-extrabold block mt-0.5 uppercase">{selectedEstab?.cidade}</span></div>
               <div className="leading-snug">N° CNPJ: <span className="text-slate-905 font-mono font-bold block mt-0.5">{selectedEstab?.cnpj}</span></div>
               <div className="leading-snug">Área Fiscal: <span className="text-slate-905 font-black block mt-0.5 uppercase">{selectedEstab?.nomeArea || "DROGARIA / DISPENSAÇÃO"}</span></div>
             </div>
@@ -206,12 +206,12 @@ export default function ChecklistCheck({ estabelecimentos, checklists, rts }: Ch
             <div className="md:col-span-1 bg-slate-50 border border-slate-150 rounded-2xl p-4 flex flex-col justify-between shadow-inner">
               <div>
                 <h4 className="font-extrabold text-slate-800 text-[10px] uppercase tracking-widest flex items-center gap-1.5 border-b border-slate-150 pb-2.5 mb-3.5 font-display">
-                  <Clock className="w-3.5 h-3.5 text-indigo-600" /> Escala Técnica Do RT
+                  <Clock className="w-3.5 h-3.5 text-violet-600" /> Escala Técnica Do RT
                 </h4>
                 {selectedRt ? (
                   <div className="space-y-0.5">
-                    <p className="text-[11.5px] font-black text-slate-900 truncate group hover:text-indigo-600 transition-colors" title={selectedRt.nome}>{selectedRt.nome}</p>
-                    <p className="text-[9.5px] font-mono text-indigo-600 font-bold mb-3 uppercase">CRF ATIVO: {selectedRt.crf}</p>
+                    <p className="text-[11.5px] font-black text-slate-900 truncate group hover:text-violet-600 transition-colors" title={selectedRt.nome}>{selectedRt.nome}</p>
+                    <p className="text-[9.5px] font-mono text-violet-600 font-bold mb-3 uppercase">CRF ATIVO: {selectedRt.crf}</p>
                     {formatSchedule("Segunda", selectedRt.segunda)}
                     {formatSchedule("Terça", selectedRt.terca)}
                     {formatSchedule("Quarta", selectedRt.quarta)}
@@ -232,7 +232,7 @@ export default function ChecklistCheck({ estabelecimentos, checklists, rts }: Ch
             <div className="md:col-span-2 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-150 pb-3">
                 <h4 className="font-extrabold text-slate-800 text-[10px] uppercase tracking-widest flex items-center gap-1.5 font-display">
-                  <ClipboardList className="w-4 h-4 text-indigo-600" /> Roteiro Sanitário RDC 44/2009
+                  <ClipboardList className="w-4 h-4 text-violet-600" /> Roteiro Sanitário RDC 44/2009
                 </h4>
                 
                 {/* Filter buttons */}
@@ -242,19 +242,19 @@ export default function ChecklistCheck({ estabelecimentos, checklists, rts }: Ch
                       onClick={() => setQuestionsFilter("all")}
                       className={`px-2 py-1 text-[9px] font-extrabold rounded-lg transition-all cursor-pointer ${getFilterIconColor("all")}`}
                     >
-                      Todos
+                      Todos ({QUESTAO_LIST.length})
                     </button>
                     <button
                       onClick={() => setQuestionsFilter("yes")}
                       className={`px-2 py-1 text-[9px] font-extrabold rounded-lg transition-all cursor-pointer ${getFilterIconColor("yes")}`}
                     >
-                      Conformidades
+                      Conformidades ({QUESTAO_LIST.filter(q => (selectedChecklist.respostas[q.id] || "N") === "S").length})
                     </button>
                     <button
                       onClick={() => setQuestionsFilter("no")}
                       className={`px-2 py-1 text-[9px] font-extrabold rounded-lg transition-all cursor-pointer ${getFilterIconColor("no")}`}
                     >
-                      Inconformidades
+                      Inconformidades ({QUESTAO_LIST.filter(q => (selectedChecklist.respostas[q.id] || "N") === "N").length})
                     </button>
                   </div>
                 )}
@@ -278,7 +278,7 @@ export default function ChecklistCheck({ estabelecimentos, checklists, rts }: Ch
                     </div>
                     <div className="text-center">
                       <span className="text-[8px] text-slate-400 block font-bold uppercase tracking-wider">Antimicrobianos</span>
-                      <span className="text-sm font-black text-indigo-650 font-mono mt-0.5 block">{selectedChecklist.totalAnaliseAntimicrobiano}</span>
+                      <span className="text-sm font-black text-violet-600 font-mono mt-0.5 block">{selectedChecklist.totalAnaliseAntimicrobiano}</span>
                     </div>
                   </div>
 

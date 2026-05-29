@@ -365,8 +365,21 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
   return (
     <div className="space-y-6 text-slate-800">
       
-      {/* City selector grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5">
+      {/* Visual Title & Subtitle for Relatórios Tab */}
+      <div className="bg-white border border-slate-200 rounded-3xl p-6 relative overflow-hidden shadow-xs">
+        <div className="absolute right-0 top-0 translate-x-12 -translate-y-12 w-64 h-64 rounded-full bg-violet-600/5 blur-3xl pointer-events-none" />
+        <div>
+          <h2 className="text-xl md:text-2xl font-extrabold tracking-tight font-display text-slate-900 uppercase">
+            Relatórios
+          </h2>
+          <p className="text-slate-500 text-xs md:text-sm mt-1 max-w-2xl leading-relaxed font-semibold">
+            Gere em segundos os seus relatórios de inspeções de forma organizada e sem complicações.
+          </p>
+        </div>
+      </div>
+      
+      {/* CitySelector Grid designed to be spacious and fully detailed */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {citySummaries.map((sum) => {
           const isSelected = sum.cidade === selectedCity;
           const coord = getTownCoordinates(sum.cidade);
@@ -375,43 +388,60 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
             <button
               key={sum.cidade}
               onClick={() => setSelectedCity(sum.cidade)}
-              className={`p-4 rounded-2xl border text-left transition-all duration-300 relative overflow-hidden group cursor-pointer ${
+              className={`p-5 rounded-3xl border text-left transition-all duration-300 relative overflow-hidden group cursor-pointer ${
                 isSelected
-                  ? "bg-indigo-600 border-indigo-500 text-white shadow-md shadow-indigo-600/10"
-                  : "bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+                  ? "bg-white border-violet-500 text-slate-900 shadow-md ring-2 ring-violet-500/20"
+                  : "bg-white border-slate-200 text-slate-650 hover:border-violet-300 hover:shadow-2xs"
               }`}
             >
-              {isSelected && (
-                <div className="absolute right-0 top-0 -translate-y-4 translate-x-4 w-12 h-12 rounded-full bg-white/10 pointer-events-none" />
-              )}
-              
-              <div className="flex items-center gap-1.5 border-b pb-2" style={{ borderColor: isSelected ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.06)' }}>
-                <MapPin className={`w-3.5 h-3.5 shrink-0 ${isSelected ? "text-white" : "text-indigo-600"}`} />
-                <span className="font-extrabold font-display text-[11px] truncate uppercase tracking-widest block leading-none">
-                  {sum.cidade}
-                </span>
+              {/* Highlight selector line */}
+              <div className={`absolute top-0 left-0 right-0 h-1.5 transition-all ${isSelected ? "bg-violet-600" : "bg-transparent"}`} />
+
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className={`p-2 rounded-xl transition-all ${isSelected ? "bg-violet-50 text-violet-600" : "bg-slate-50 text-slate-400 group-hover:bg-violet-50 group-hover:text-violet-600"}`}>
+                    <MapPin className="w-4 h-4 shrink-0" />
+                  </div>
+                  <div>
+                    <span className="font-extrabold font-display text-xs uppercase tracking-wider block text-slate-900 leading-tight">
+                      {sum.cidade}
+                    </span>
+                    <span className="text-[9px] font-mono text-slate-400 select-none block mt-0.5">
+                      {coord}
+                    </span>
+                  </div>
+                </div>
+
+                {isSelected && (
+                  <span className="text-[9px] font-extrabold bg-violet-600 text-white px-2 py-0.5 rounded uppercase font-mono tracking-wider">
+                    Ativo
+                  </span>
+                )}
               </div>
               
-              <div className={`text-[8px] font-mono select-none block mt-1.5 truncate leading-none ${isSelected ? "text-white/70" : "text-slate-400"}`}>
-                {coord}
-              </div>
-              
-              <div className="mt-4 grid grid-cols-2 gap-x-2 gap-y-2 text-[9px] font-mono leading-none">
-                <div>
-                  <span className={`block font-bold uppercase tracking-wider text-[8px] ${isSelected ? "text-white/60" : "text-slate-400"}`}>Vistorias</span>
-                  <span className={`font-black text-[11px] block mt-1 ${isSelected ? "text-white" : "text-slate-800"}`}>{sum.inspecoes}</span>
+              <div className="grid grid-cols-2 gap-3">
+                {/* Inspeções */}
+                <div className="p-3 bg-violet-50/40 border border-violet-100/30 rounded-2xl flex flex-col justify-between">
+                  <span className="block font-extrabold text-slate-400 uppercase tracking-wider text-[8px]">Inspeções</span>
+                  <span className="font-mono font-black text-sm text-violet-700 block mt-1">{sum.inspecoes}</span>
                 </div>
-                <div>
-                  <span className={`block font-bold uppercase tracking-wider text-[8px] ${isSelected ? "text-white/60" : "text-slate-400"}`}>Notific</span>
-                  <span className={`font-black text-[11px] block mt-1 ${isSelected ? "text-white" : "text-amber-500"}`}>{sum.intimacoes}</span>
+
+                {/* Intimações */}
+                <div className="p-3 bg-amber-50/40 border border-amber-100/30 rounded-2xl flex flex-col justify-between">
+                  <span className="block font-extrabold text-slate-400 uppercase tracking-wider text-[8px]">Intimações</span>
+                  <span className="font-mono font-black text-sm text-amber-600 block mt-1">{sum.intimacoes}</span>
                 </div>
-                <div className="mt-1">
-                  <span className={`block font-bold uppercase tracking-wider text-[8px] ${isSelected ? "text-white/60" : "text-slate-400"}`}>Autos</span>
-                  <span className={`font-black text-[11px] block mt-1 ${isSelected ? "text-white" : "text-rose-500"}`}>{sum.autos}</span>
+
+                {/* Autos */}
+                <div className="p-3 bg-rose-50/40 border border-rose-100/30 rounded-2xl flex flex-col justify-between">
+                  <span className="block font-extrabold text-slate-400 uppercase tracking-wider text-[8px]">Autos</span>
+                  <span className="font-mono font-black text-sm text-rose-600 block mt-1">{sum.autos}</span>
                 </div>
-                <div className="mt-1">
-                  <span className={`block font-bold uppercase tracking-wider text-[8px] ${isSelected ? "text-white/60" : "text-slate-400"}`}>Novas IE</span>
-                  <span className={`font-black text-[11px] block mt-1 ${isSelected ? "text-white" : "text-emerald-500"}`}>{sum.novos}</span>
+
+                {/* Novas Empresas */}
+                <div className="p-3 bg-emerald-50/40 border border-emerald-100/30 rounded-2xl flex flex-col justify-between">
+                  <span className="block font-extrabold text-slate-400 uppercase tracking-wider text-[8px]">Novas Empresas</span>
+                  <span className="font-mono font-black text-sm text-emerald-600 block mt-1">{sum.novos}</span>
                 </div>
               </div>
             </button>
@@ -427,7 +457,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
           <div>
             <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
               <div className="flex items-center gap-2.5">
-                <Printer className="w-5 h-5 text-indigo-600" />
+                <Printer className="w-5 h-5 text-violet-600" />
                 <div>
                   <h4 className="font-extrabold text-slate-900 text-sm font-display tracking-wide uppercase">
                     Relatório Consolidado de {selectedCity}
@@ -441,7 +471,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
               {/* Configure Eval items Button */}
               <button
                 onClick={() => setIsEvalModalOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 text-indigo-700 text-[10.5px] font-black tracking-wide transition-all uppercase cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-50 border border-violet-100 hover:bg-violet-100 text-violet-700 text-[10.5px] font-black tracking-wide transition-all uppercase cursor-pointer"
               >
                 <Sliders className="w-3.5 h-3.5" />
                 Configurar Item 3
@@ -458,7 +488,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
                     onClick={() => setMunicipalFilter("todos")}
                     className={`p-2.5 rounded-xl border text-left text-[11px] font-bold transition-all cursor-pointer ${
                       municipalFilter === "todos"
-                        ? "bg-indigo-600/10 border-indigo-500/30 text-indigo-900 shadow-2xs"
+                        ? "bg-violet-600/10 border-violet-500/30 text-violet-900 shadow-2xs"
                         : "bg-slate-50 border-slate-150 text-slate-510 hover:border-slate-300 hover:text-slate-900"
                     }`}
                   >
@@ -509,7 +539,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
                   type="button"
                   onClick={() => setIncludeClosed(!includeClosed)}
                   className={`w-11 h-6 rounded-full transition-all duration-200 ease-in-out relative flex items-center shrink-0 cursor-pointer outline-none ${
-                    includeClosed ? "bg-indigo-600" : "bg-slate-350"
+                    includeClosed ? "bg-violet-600" : "bg-slate-350"
                   }`}
                 >
                   <span
@@ -528,7 +558,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
                     if (!active) return null;
                     const cleanName = key.replace("has", "").slice(0, 8);
                     return (
-                      <span key={key} className="text-[8.5px] font-bold bg-indigo-50 border border-indigo-100 text-indigo-700 px-2 py-0.5 rounded">
+                      <span key={key} className="text-[8.5px] font-bold bg-violet-50 border border-violet-100 text-violet-700 px-2 py-0.5 rounded">
                         +{cleanName}...
                       </span>
                     );
@@ -541,7 +571,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
           <div className="mt-6 pt-4 border-t border-slate-100">
             <button
               onClick={downloadMunicipalReport}
-              className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs px-5 py-3.5 rounded-xl cursor-pointer shadow-md transition-all active:translate-y-0.5"
+              className="w-full flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs px-5 py-3.5 rounded-xl cursor-pointer shadow-md transition-all active:translate-y-0.5"
             >
               <FileDown className="w-4 h-4 animate-bounce" /> Exportar Relatório de {selectedCity} (.DOCX)
             </button>
@@ -552,7 +582,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
         <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs flex flex-col justify-between">
           <div>
             <div className="flex items-center gap-2.5 border-b border-slate-100 pb-4 mb-4">
-              <Briefcase className="w-5 h-5 text-indigo-600" />
+              <Briefcase className="w-5 h-5 text-violet-600" />
               <div>
                 <h4 className="font-extrabold text-slate-900 text-sm font-display tracking-wide uppercase">
                   Resumo de Viagem Geral
@@ -572,7 +602,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
                   type="text"
                   value={travelFiscais}
                   onChange={(e) => setTravelFiscais(e.target.value.toUpperCase())}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 px-3 text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 px-3 text-xs font-bold text-slate-800 focus:outline-none focus:border-violet-500 focus:bg-white transition-all"
                   placeholder="EX: ROBERTO BENEVENUTO / JEFFERSON AYRES"
                 />
               </div>
@@ -586,7 +616,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
                     type="text"
                     value={travelPeriod}
                     onChange={(e) => setTravelPeriod(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 px-3 pr-10 text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 px-3 pr-10 text-xs font-bold text-slate-800 focus:outline-none focus:border-violet-500 focus:bg-white transition-all"
                     placeholder="EX: 15/05/2026 a 22/05/2026"
                   />
                   <Calendar className="w-4 h-4 text-slate-400 absolute right-3 top-3.5" />
@@ -598,7 +628,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
           <div className="mt-6 pt-4 border-t border-slate-100">
             <button
               onClick={downloadTravelSummary}
-              className="w-full flex items-center justify-center gap-2 bg-indigo-600/90 hover:bg-indigo-600 text-white font-extrabold text-xs px-5 py-3.5 rounded-xl cursor-pointer shadow-md transition-all active:translate-y-0.5"
+              className="w-full flex items-center justify-center gap-2 bg-violet-600/90 hover:bg-violet-600 text-white font-extrabold text-xs px-5 py-3.5 rounded-xl cursor-pointer shadow-md transition-all active:translate-y-0.5"
             >
               <FileDown className="w-4 h-4" /> Exportar Resumo de Viagem (.DOCX)
             </button>
@@ -613,9 +643,9 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
         {/* Localized view header */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-4 mb-6">
           <div className="space-y-1">
-            <span className="text-[10px] font-bold font-mono text-indigo-600 block uppercase tracking-widest leading-none">MUNICÍPIO SOB AUDITORIA DE CAMPO</span>
+            <span className="text-[10px] font-bold font-mono text-violet-600 block uppercase tracking-widest leading-none">MUNICÍPIO SOB AUDITORIA DE CAMPO</span>
             <h3 className="text-base font-extrabold text-slate-900 font-display uppercase tracking-widest flex items-center gap-2">
-              <Compass className="w-5 h-5 text-indigo-600 rotate-12" /> Cobertura Sanitária: {selectedCity}
+              <Compass className="w-5 h-5 text-violet-600 rotate-12" /> Cobertura Sanitária: {selectedCity}
             </h3>
           </div>
 
@@ -642,7 +672,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
             const isNovo = e.inscricao.toUpperCase().includes("I");
 
             return (
-              <div key={e.inscricao} className="border border-slate-205 rounded-2xl p-5 hover:border-indigo-200 transition-all flex flex-col justify-between bg-slate-50/30 hover:bg-white relative overflow-hidden group">
+              <div key={e.inscricao} className="border border-slate-205 rounded-2xl p-5 hover:border-violet-200 transition-all flex flex-col justify-between bg-slate-50/30 hover:bg-white relative overflow-hidden group">
                 <div>
                   <div className="flex items-start justify-between gap-3">
                     <h4 className="font-extrabold text-slate-905 font-display text-xs tracking-wide uppercase truncate max-w-[200px]">{e.fantasia}</h4>
@@ -652,7 +682,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
                           NOVO Cad
                         </span>
                       )}
-                      <span className="text-[9px] font-bold font-mono bg-indigo-50 border border-indigo-100/50 text-indigo-700 px-2 py-0.5 rounded-md select-all">
+                      <span className="text-[9px] font-bold font-mono bg-violet-50 border border-violet-100/50 text-violet-700 px-2 py-0.5 rounded-md select-all">
                         I.E: {e.inscricao}
                       </span>
                     </div>
@@ -722,9 +752,9 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
               className="bg-white rounded-3xl shadow-xl border border-slate-200 w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden"
             >
               {/* Modal Header */}
-              <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-indigo-50/50">
+              <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-violet-50/50">
                 <div className="flex items-center gap-2.5">
-                  <div className="p-2 bg-indigo-600 text-white rounded-xl">
+                  <div className="p-2 bg-violet-600 text-white rounded-xl">
                     <Sliders className="w-5 h-5" />
                   </div>
                   <div>
@@ -746,16 +776,16 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
                 <div className="bg-amber-50 border border-amber-200 text-amber-850 p-3.5 rounded-2xl flex items-start gap-2 text-xs">
                   <HelpCircle className="w-5 h-5 shrink-0 mt-0.5 text-amber-700" />
                   <p className="leading-relaxed">
-                    Marque as caixas para cada situação/infração identificada em campo. Ao marcar uma situação, o sistema automaticamente acoplará a fundamentação legal e técnica correspondente no relatório exportável.
+                    Marque as caixas para cada situation/infração identificada em campo. Ao marcar uma situação, o sistema automaticamente acoplará a fundamentação legal e técnica correspondente no relatório exportável.
                   </p>
                 </div>
 
                 {/* Opção: Marcar Automaticamente pelo sistema */}
-                <div className="bg-indigo-50/50 border border-indigo-150 rounded-2xl p-4 flex items-center justify-between gap-4">
+                <div className="bg-violet-50/50 border border-violet-150 rounded-2xl p-4 flex items-center justify-between gap-4">
                   <div className="space-y-1">
                     <div className="flex items-center gap-1.5">
-                      <Sparkles className="w-4 h-4 text-indigo-600 animate-pulse shrink-0" />
-                      <span className="text-xs font-extrabold text-indigo-950 uppercase tracking-wider block font-display">Marcar Automaticamente pelo sistema</span>
+                      <Sparkles className="w-4 h-4 text-violet-600 animate-pulse shrink-0" />
+                      <span className="text-xs font-extrabold text-violet-950 uppercase tracking-wider block font-display">Marcar Automaticamente pelo sistema</span>
                     </div>
                     <p className="text-[11px] text-slate-500 font-medium leading-relaxed max-w-lg">
                       Quando ativado, o cruzamento inteligente de dados XML identifica e marca de forma inteligente as opções condizentes com os dados de vistorias técnicas deste Polo.
@@ -771,7 +801,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
                       }
                     }}
                     className={`w-12 h-6.5 rounded-full transition-all duration-300 ease-in-out relative flex items-center shrink-0 cursor-pointer outline-none shadow-xs ${
-                      autoMarkActive ? "bg-indigo-600" : "bg-slate-300"
+                      autoMarkActive ? "bg-violet-600" : "bg-slate-300"
                     }`}
                   >
                     <span
@@ -779,7 +809,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
                         autoMarkActive ? "translate-x-6" : "translate-x-0.5"
                       }`}
                     >
-                      {autoMarkActive && <Check className="w-3 h-3 text-indigo-600 font-bold" />}
+                      {autoMarkActive && <Check className="w-3 h-3 text-violet-600 font-bold" />}
                     </span>
                   </button>
                 </div>
@@ -789,7 +819,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
                   <label className="flex items-start gap-3.5 p-3.5 bg-slate-50/60 border border-slate-150 hover:border-slate-350 rounded-2xl cursor-pointer transition-colors block">
                     <input 
                       type="checkbox" 
-                      className="mt-1 rounded text-indigo-600 focus:ring-indigo-500 shrink-0 h-4.5 w-4.5"
+                      className="mt-1 rounded text-violet-600 focus:ring-violet-500 shrink-0 h-4.5 w-4.5"
                       checked={evalItems.hasFaltaReceituario}
                       onChange={(e) => setEvalItems({ ...evalItems, hasFaltaReceituario: e.target.checked })}
                     />
@@ -805,7 +835,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
                   <label className="flex items-start gap-3.5 p-3.5 bg-slate-50/60 border border-slate-150 hover:border-slate-350 rounded-2xl cursor-pointer transition-colors block">
                     <input 
                       type="checkbox" 
-                      className="mt-1 rounded text-indigo-600 focus:ring-indigo-500 shrink-0 h-4.5 w-4.5"
+                      className="mt-1 rounded text-violet-600 focus:ring-violet-500 shrink-0 h-4.5 w-4.5"
                       checked={evalItems.hasDeficienciaInjetaveis}
                       onChange={(e) => setEvalItems({ ...evalItems, hasDeficienciaInjetaveis: e.target.checked })}
                     />
@@ -818,10 +848,10 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
                   </label>
 
                   {/* Item 3 */}
-                  <label className="flex items-start gap-3.5 p-3.5 bg-slate-50/60 border border-slate-150 hover:border-slate-350 rounded-2xl cursor-pointer transition-colors block">
+                  <label className="flex items-start gap-3.5 p-3.5 bg-slate-50/60 border border-slate-150 hover:border-slate-300 rounded-2xl cursor-pointer transition-colors block">
                     <input 
                       type="checkbox" 
-                      className="mt-1 rounded text-indigo-600 focus:ring-indigo-500 shrink-0 h-4.5 w-4.5"
+                      className="mt-1 rounded text-violet-600 focus:ring-violet-500 shrink-0 h-4.5 w-4.5"
                       checked={evalItems.hasFaltaAfeAlvarares}
                       onChange={(e) => setEvalItems({ ...evalItems, hasFaltaAfeAlvarares: e.target.checked })}
                     />
@@ -838,7 +868,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
                     <label className="flex items-start gap-3.5 cursor-pointer">
                       <input 
                         type="checkbox" 
-                        className="mt-1 rounded text-indigo-600 focus:ring-indigo-500 shrink-0 h-4.5 w-4.5"
+                        className="mt-1 rounded text-violet-600 focus:ring-violet-500 shrink-0 h-4.5 w-4.5"
                         checked={evalItems.hasIrregularidadeLabInfra}
                         onChange={(e) => setEvalItems({ ...evalItems, hasIrregularidadeLabInfra: e.target.checked })}
                       />
@@ -861,7 +891,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
                           <button
                             type="button"
                             onClick={() => setLabsInfra([...labsInfra, { nome: "", cnpj: "" }])}
-                            className="inline-flex items-center gap-1 text-[10px] bg-indigo-50 border border-indigo-200 text-indigo-700 px-2 py-1 rounded-md font-bold hover:bg-indigo-100 transition-all cursor-pointer"
+                            className="inline-flex items-center gap-1 text-[10px] bg-violet-50 border border-violet-200 text-violet-700 px-2 py-1 rounded-md font-bold hover:bg-violet-100 transition-all cursor-pointer"
                           >
                             <Plus className="w-3 h-3" /> Adicionar
                           </button>
@@ -918,7 +948,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
                     <label className="flex items-start gap-3.5 cursor-pointer">
                       <input 
                         type="checkbox" 
-                        className="mt-1 rounded text-indigo-600 focus:ring-indigo-500 shrink-0 h-4.5 w-4.5"
+                        className="mt-1 rounded text-violet-600 focus:ring-violet-500 shrink-0 h-4.5 w-4.5"
                         checked={evalItems.hasLeituraLaminasSemFarmac}
                         onChange={(e) => setEvalItems({ ...evalItems, hasLeituraLaminasSemFarmac: e.target.checked })}
                       />
@@ -941,7 +971,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
                           <button
                             type="button"
                             onClick={() => setLabsLaminas([...labsLaminas, { nome: "" }])}
-                            className="inline-flex items-center gap-1 text-[10px] bg-indigo-50 border border-indigo-200 text-indigo-700 px-2 py-1 rounded-md font-bold hover:bg-indigo-100 transition-all cursor-pointer"
+                            className="inline-flex items-center gap-1 text-[10px] bg-violet-50 border border-violet-200 text-violet-700 px-2 py-1 rounded-md font-bold hover:bg-violet-100 transition-all cursor-pointer"
                           >
                             <Plus className="w-3 h-3" /> Adicionar
                           </button>
@@ -983,7 +1013,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
                   <label className="flex items-start gap-3.5 p-3.5 bg-slate-50/60 border border-slate-150 hover:border-slate-350 rounded-2xl cursor-pointer transition-colors block">
                     <input 
                       type="checkbox" 
-                      className="mt-1 rounded text-indigo-600 focus:ring-indigo-500 shrink-0 h-4.5 w-4.5"
+                      className="mt-1 rounded text-violet-600 focus:ring-violet-500 shrink-0 h-4.5 w-4.5"
                       checked={evalItems.hasFaltaFarmacUbs}
                       onChange={(e) => setEvalItems({ ...evalItems, hasFaltaFarmacUbs: e.target.checked })}
                     />
@@ -999,7 +1029,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
                   <label className="flex items-start gap-3.5 p-3.5 bg-slate-50/60 border border-slate-150 hover:border-slate-350 rounded-2xl cursor-pointer transition-colors block">
                     <input 
                       type="checkbox" 
-                      className="mt-1 rounded text-indigo-600 focus:ring-indigo-500 shrink-0 h-4.5 w-4.5"
+                      className="mt-1 rounded text-violet-600 focus:ring-violet-500 shrink-0 h-4.5 w-4.5"
                       checked={evalItems.hasOrientacaoCftRemume}
                       onChange={(e) => setEvalItems({ ...evalItems, hasOrientacaoCftRemume: e.target.checked })}
                     />
@@ -1015,7 +1045,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
                   <label className="flex items-start gap-3.5 p-3.5 bg-slate-50/60 border border-slate-150 hover:border-slate-350 rounded-2xl cursor-pointer transition-colors block">
                     <input 
                       type="checkbox" 
-                      className="mt-1 rounded text-indigo-600 focus:ring-indigo-500 shrink-0 h-4.5 w-4.5"
+                      className="mt-1 rounded text-violet-600 focus:ring-violet-500 shrink-0 h-4.5 w-4.5"
                       checked={evalItems.hasImplementacaoHorus}
                       onChange={(e) => setEvalItems({ ...evalItems, hasImplementacaoHorus: e.target.checked })}
                     />
@@ -1032,7 +1062,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
                     <label className="flex items-start gap-3.5 cursor-pointer">
                       <input 
                         type="checkbox" 
-                        className="mt-1 rounded text-indigo-600 focus:ring-indigo-500 shrink-0 h-4.5 w-4.5"
+                        className="mt-1 rounded text-violet-600 focus:ring-violet-500 shrink-0 h-4.5 w-4.5"
                         checked={evalItems.hasFragilidadeHospital}
                         onChange={(e) => setEvalItems({ ...evalItems, hasFragilidadeHospital: e.target.checked })}
                       />
@@ -1055,7 +1085,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
                           <button
                             type="button"
                             onClick={() => setHospitals([...hospitals, { nome: "" }])}
-                            className="inline-flex items-center gap-1 text-[10px] bg-indigo-50 border border-indigo-200 text-indigo-700 px-2 py-1 rounded-md font-bold hover:bg-indigo-100 transition-all cursor-pointer"
+                            className="inline-flex items-center gap-1 text-[10px] bg-violet-50 border border-violet-200 text-violet-700 px-2 py-1 rounded-md font-bold hover:bg-violet-100 transition-all cursor-pointer"
                           >
                             <Plus className="w-3 h-3" /> Adicionar
                           </button>
@@ -1097,7 +1127,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
                   <label className="flex items-start gap-3.5 p-3.5 bg-slate-50/60 border border-slate-150 hover:border-slate-350 rounded-2xl cursor-pointer transition-colors block">
                     <input 
                       type="checkbox" 
-                      className="mt-1 rounded text-indigo-600 focus:ring-indigo-500 shrink-0 h-4.5 w-4.5"
+                      className="mt-1 rounded text-violet-600 focus:ring-violet-500 shrink-0 h-4.5 w-4.5"
                       checked={evalItems.hasCaronaLicitacao}
                       onChange={(e) => setEvalItems({ ...evalItems, hasCaronaLicitacao: e.target.checked })}
                     />
@@ -1113,7 +1143,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
                   <label className="flex items-start gap-3.5 p-3.5 bg-slate-50/60 border border-slate-150 hover:border-slate-350 rounded-2xl cursor-pointer transition-colors block">
                     <input 
                       type="checkbox" 
-                      className="mt-1 rounded text-indigo-600 focus:ring-indigo-500 shrink-0 h-4.5 w-4.5"
+                      className="mt-1 rounded text-violet-600 focus:ring-violet-500 shrink-0 h-4.5 w-4.5"
                       checked={evalItems.hasVendaSupermercado}
                       onChange={(e) => setEvalItems({ ...evalItems, hasVendaSupermercado: e.target.checked })}
                     />
@@ -1129,7 +1159,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
                   <label className="flex items-start gap-3.5 p-3.5 bg-slate-50/60 border border-slate-150 hover:border-slate-350 rounded-2xl cursor-pointer transition-colors block">
                     <input 
                       type="checkbox" 
-                      className="mt-1 rounded text-indigo-600 focus:ring-indigo-500 shrink-0 h-4.5 w-4.5"
+                      className="mt-1 rounded text-violet-600 focus:ring-violet-500 shrink-0 h-4.5 w-4.5"
                       checked={evalItems.hasApeloFiscalizacao}
                       onChange={(e) => setEvalItems({ ...evalItems, hasApeloFiscalizacao: e.target.checked })}
                     />
@@ -1146,12 +1176,12 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
 
               {/* Modal Footer */}
               <div className="p-5 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
-                <span className="text-xs font-bold text-indigo-700">
+                <span className="text-xs font-bold text-violet-700">
                   {Object.values(evalItems).filter(Boolean).length} cláusulas ativas na Avaliação Geral
                 </span>
                 <button 
                   onClick={() => setIsEvalModalOpen(false)}
-                  className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs rounded-xl cursor-pointer shadow-md active:scale-95 transition-all text-center"
+                  className="px-6 py-3 bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-xs rounded-xl cursor-pointer shadow-md active:scale-95 transition-all text-center"
                 >
                   <Check className="w-4 h-4 inline mr-1" /> Aplicar Configuração e Salvar
                 </button>
