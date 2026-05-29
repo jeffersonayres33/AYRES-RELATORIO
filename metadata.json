@@ -1,0 +1,6 @@
+{
+  "name": "Siscon XML Auditoria",
+  "description": "Sistema moderno de gestão, auditoria sanitária e consolidação de relatórios de inspeções Siscon/FEM.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
