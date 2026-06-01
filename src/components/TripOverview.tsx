@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../lib/firebase";
-import { Estabelecimento, TermoSanitario, FarmaciaChecklist, EvalItem } from "../types";
+import { Estabelecimento, TermoSanitario, FarmaciaChecklist, EvalItem, EvalVariable } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import { exportMunicipalDocx, exportTravelDocx } from "../utils/docxExporter";
 
@@ -40,6 +40,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
   const [travelFiscais, setTravelFiscais] = useState<string>("ROBERTO BENEVENUTO / JEFFERSON AYRES");
   const [travelPeriod, setTravelPeriod] = useState<string>("15/05/2026 a 22/05/2026");
   const [includeClosed, setIncludeClosed] = useState<boolean>(false);
+  const [dateFormat, setDateFormat] = useState<"apenas_data" | "data_hora" | "sem_data">("apenas_data");
 
   // Checks if an establishment was found closed
   const isEstabClosed = (e: Estabelecimento) => {
@@ -72,17 +73,28 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
   });
 
   const [dbEvalItems, setDbEvalItems] = useState<EvalItem[]>([]);
+  const [dbEvalVariables, setDbEvalVariables] = useState<EvalVariable[]>([]);
+  const [customVariablesData, setCustomVariablesData] = useState<Record<string, Record<string, string>[]>>({});
 
   React.useEffect(() => {
     const fetchDbParams = async () => {
       try {
-        const qs = await getDocs(collection(db, "evaluation_items"));
+        const [itemsQs, varsQs] = await Promise.all([
+           getDocs(collection(db, "evaluation_items")),
+           getDocs(collection(db, "evaluation_variables"))
+        ]);
+        
         const list: EvalItem[] = [];
-        qs.forEach((d) => list.push({ id: d.id, ...d.data() } as EvalItem));
+        itemsQs.forEach((d) => list.push({ id: d.id, ...d.data() } as EvalItem));
         const sortedList = list.sort((a, b) => (a.order || 0) - (b.order || 0));
         setDbEvalItems(sortedList);
 
+        const varsList: EvalVariable[] = [];
+        varsQs.forEach((d) => varsList.push({ id: d.id, ...d.data() } as EvalVariable));
+        setDbEvalVariables(varsList);
+
         // Populate evalItems with defaultChecked ones
+
         setEvalItems((prev) => {
           const next = { ...prev };
           sortedList.forEach(item => {
@@ -247,6 +259,25 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
          p = p.replace(/\[LABS_INFRA\]/g, formattedLabsInfra);
          p = p.replace(/\[LABS_LAMINAS\]/g, formattedLabsLaminas);
          p = p.replace(/\[HOSPITAIS\]/g, formattedHospitals);
+         
+         // Process Custom Variables
+         dbEvalVariables.forEach(v => {
+            const regex = new RegExp(`\\[${v.id}\\]`, 'g');
+            if (p.match(regex)) {
+               const valuesList = customVariablesData[v.id] || [];
+               const formattedV = valuesList.map(record => {
+                  let fp = v.formatPattern;
+                  v.fields.forEach(f => {
+                     const key = `{${f.key}}`;
+                     const val = record[f.key] || "";
+                     fp = fp.split(key).join(val);
+                  });
+                  return fp;
+               }).join(", ");
+               p = p.replace(regex, formattedV);
+            }
+         });
+
          paragraphs.push(p);
       }
     });
@@ -284,7 +315,8 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
       filteredEstabs,
       termos,
       checklists,
-      customAvaliacaoGeralText: compiledText
+      customAvaliacaoGeralText: compiledText,
+      dateFormat
     });
   };
 
@@ -321,19 +353,6 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
     );
   }
 
-  // Coordinates values for Amazon towns
-  const getTownCoordinates = (town: string) => {
-    const coords: Record<string, string> = {
-      "TEFE": "3.3544° S, 64.7114° W",
-      "COARI": "4.0850° S, 63.1417° W",
-      "TABATINGA": "4.2181° S, 69.9381° W",
-      "MAUES": "3.3776° S, 57.7126° W",
-      "ITACOATIARA": "3.1431° S, 58.4442° W",
-      "MANAUS": "3.1190° S, 60.0217° W"
-    };
-    return coords[town.toUpperCase()] || "3.4167° S, 65.8500° W";
-  };
-
   return (
     <div className="space-y-6 text-slate-800">
       
@@ -354,7 +373,6 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {citySummaries.map((sum) => {
           const isSelected = sum.cidade === selectedCity;
-          const coord = getTownCoordinates(sum.cidade);
           
           return (
             <button
@@ -377,9 +395,6 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
                   <div>
                     <span className="font-extrabold font-display text-sm uppercase tracking-wider block text-slate-900 leading-tight">
                       {sum.cidade}
-                    </span>
-                    <span className="text-sm font-mono text-slate-400 select-none block mt-0.5">
-                      {coord}
                     </span>
                   </div>
                 </div>
@@ -432,7 +447,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
                 <Printer className="w-5 h-5 text-violet-600" />
                 <div>
                   <h4 className="font-extrabold text-slate-900 text-base font-display tracking-wide uppercase">
-                    Relatório Consolidado de {selectedCity}
+                    Relatório de {selectedCity}
                   </h4>
                   <p className="text-[10.5px] text-slate-500 mt-0.5">
                     Gerar relatório de todos os estabelecimentos no município selecionado
@@ -450,48 +465,48 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
               </button>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-5 mt-4">
               <div>
-                <label className="text-[10.5px] font-extrabold text-slate-400 uppercase tracking-widest block mb-1.5">
-                  Situação Fiscal das Empresas a Incluir:
+                <label className="text-[10.5px] font-extrabold text-slate-500 uppercase tracking-widest block mb-2 px-1">
+                  Filtrar Situação Fiscal:
                 </label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-3">
                   <button
                     onClick={() => setMunicipalFilter("todos")}
-                    className={`p-2.5 rounded-xl border text-left text-sm font-bold transition-all cursor-pointer ${
+                    className={`p-3 rounded-xl border-2 text-left text-xs uppercase tracking-wide font-black transition-all cursor-pointer ${
                       municipalFilter === "todos"
-                        ? "bg-violet-600/10 border-violet-500/30 text-violet-900 shadow-2xs"
-                        : "bg-slate-50 border-slate-150 text-slate-510 hover:border-slate-300 hover:text-slate-900"
+                        ? "bg-violet-50 border-violet-600 text-violet-800 shadow-sm"
+                        : "bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
                     }`}
                   >
-                    📂 Todas as Empresas
+                    📂 Todas 
                   </button>
                   <button
                     onClick={() => setMunicipalFilter("intimados")}
-                    className={`p-2.5 rounded-xl border text-left text-sm font-bold transition-all cursor-pointer ${
+                    className={`p-3 rounded-xl border-2 text-left text-xs uppercase tracking-wide font-black transition-all cursor-pointer ${
                       municipalFilter === "intimados"
-                        ? "bg-amber-652/10 border-amber-500/30 text-amber-800 shadow-2xs"
-                        : "bg-slate-50 border-slate-150 text-slate-510 hover:border-slate-300 hover:text-slate-900"
+                        ? "bg-amber-50 border-amber-500 text-amber-800 shadow-sm"
+                        : "bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
                     }`}
                   >
-                    ⚠️ Só as Intimadas
+                    ⚠️ Só Intimadas
                   </button>
                   <button
                     onClick={() => setMunicipalFilter("autuados")}
-                    className={`p-2.5 rounded-xl border text-left text-sm font-bold transition-all cursor-pointer ${
+                    className={`p-3 rounded-xl border-2 text-left text-xs uppercase tracking-wide font-black transition-all cursor-pointer ${
                       municipalFilter === "autuados"
-                        ? "bg-rose-600/10 border-rose-500/30 text-rose-800 shadow-2xs"
-                        : "bg-slate-50 border-slate-150 text-slate-510 hover:border-slate-300 hover:text-slate-900"
+                        ? "bg-rose-50 border-rose-500 text-rose-800 shadow-sm"
+                        : "bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
                     }`}
                   >
-                    🛑 Só as Autuadas
+                    🛑 Só Autuadas
                   </button>
                   <button
                     onClick={() => setMunicipalFilter("intimados_autuados")}
-                    className={`p-2.5 rounded-xl border text-left text-sm font-bold transition-all cursor-pointer ${
+                    className={`p-3 rounded-xl border-2 text-left text-xs uppercase tracking-wide font-black transition-all cursor-pointer ${
                       municipalFilter === "intimados_autuados"
-                        ? "bg-purple-600/10 border-purple-500/30 text-purple-800 shadow-2xs"
-                        : "bg-slate-50 border-slate-150 text-slate-510 hover:border-slate-300 hover:text-slate-900"
+                        ? "bg-fuchsia-50 border-fuchsia-600 text-fuchsia-800 shadow-sm"
+                        : "bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
                     }`}
                   >
                     ⚡ Intimadas e Autuadas
@@ -499,28 +514,74 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
                 </div>
               </div>
 
+              {/* Opções de Data (DOCX) */}
+              <div>
+                <label className="text-[10.5px] font-extrabold text-slate-500 uppercase tracking-widest block mb-2 px-1 mt-4">
+                  Exibição da Data (DOCX):
+                </label>
+                <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setDateFormat("apenas_data")}
+                    className={`flex-1 py-1.5 px-2 rounded-lg text-[10.5px] uppercase tracking-wider font-extrabold transition-all cursor-pointer ${
+                      dateFormat === "apenas_data"
+                        ? "bg-white text-violet-700 shadow-sm"
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    Apenas Data
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDateFormat("data_hora")}
+                    className={`flex-1 py-1.5 px-2 rounded-lg text-[10.5px] uppercase tracking-wider font-extrabold transition-all cursor-pointer ${
+                      dateFormat === "data_hora"
+                        ? "bg-white text-violet-700 shadow-sm"
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    Data e Hora
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDateFormat("sem_data")}
+                    className={`flex-1 py-1.5 px-2 rounded-lg text-[10.5px] uppercase tracking-wider font-extrabold transition-all cursor-pointer ${
+                      dateFormat === "sem_data"
+                        ? "bg-white text-rose-600 shadow-sm"
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    Sem Data / Hora
+                  </button>
+                </div>
+              </div>
+
               {/* Opção: Incluir Empresas Fechadas */}
-              <div className="bg-slate-50 border border-slate-150 rounded-2xl p-3.5 flex items-center justify-between gap-3">
+              <label className="bg-white border-2 border-slate-200 hover:border-slate-300 shadow-sm rounded-2xl p-4 flex items-center justify-between gap-4 cursor-pointer transition-all">
+                <input 
+                  type="checkbox" 
+                  className="hidden" 
+                  checked={includeClosed} 
+                  onChange={() => setIncludeClosed(!includeClosed)} 
+                />
                 <div className="space-y-1">
-                  <span className="text-sm font-bold text-slate-850 uppercase tracking-widest block font-display">Incluir Empresas Fechadas</span>
-                  <p className="text-[9.5px] text-slate-400 font-medium leading-relaxed">
+                  <span className="text-sm font-extrabold text-slate-800 uppercase tracking-widest block font-display">Incluir Empresas Fechadas</span>
+                  <p className="text-xs text-slate-500 font-medium leading-relaxed">
                     Se desativado, exclui do relatório as empresas encontradas fechadas no momento da inspeção.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setIncludeClosed(!includeClosed)}
-                  className={`w-11 h-6 rounded-full transition-all duration-200 ease-in-out relative flex items-center shrink-0 cursor-pointer outline-none ${
-                    includeClosed ? "bg-violet-600" : "bg-slate-350"
+                <div
+                  className={`w-14 h-7 rounded-full transition-all duration-300 ease-in-out relative flex items-center shrink-0 border-2 ${
+                    includeClosed ? "bg-violet-600 border-violet-600" : "bg-slate-200 border-slate-300"
                   }`}
                 >
                   <span
-                    className={`absolute bg-white w-5 h-5 rounded-full transition-transform duration-205 shadow-sm ${
-                      includeClosed ? "translate-x-5.5" : "translate-x-0.5"
+                    className={`absolute bg-white w-5 h-5 rounded-full transition-transform duration-300 shadow-sm ${
+                      includeClosed ? "translate-x-7" : "translate-x-1"
                     }`}
                   />
-                </button>
-              </div>
+                </div>
+              </label>
 
               {/* Quick feedback on evaluation paragraphs configured */}
               <div className="bg-slate-50 border border-slate-150 rounded-2xl p-3.5 space-y-1">
@@ -787,79 +848,273 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
                 </div>
 
                 <div className="space-y-4">
-                  
-                {/* Custom Variables Section */}
-                <div className="bg-white border border-slate-200 rounded-3xl p-5 mb-6 shadow-sm">
-                  <h4 className="font-extrabold text-slate-900 text-sm font-display uppercase tracking-widest mb-3">Variáveis do Relatório (Opcional)</h4>
-                  <p className="text-sm text-slate-500 mb-4 leading-relaxed max-w-2xl">
-                    Se você utilizar etiquetas como <strong>[LABS_INFRA]</strong>, <strong>[LABS_LAMINAS]</strong> ou <strong>[HOSPITAIS]</strong> nos parágrafos do Construtor, eles serão substituídos pelos itens abaixo.
-                  </p>
+                  {/* Dynamically Fetched Items from Firestore */}
+                  {dbEvalItems.map((item, index) => {
+                    const textToSearch = `${item.title || ""} ${item.description || ""} ${item.paragraph || ""}`;
+                    const hasLabsInfra = textToSearch.includes("[LABS_INFRA]");
+                    const hasLabsLaminas = textToSearch.includes("[LABS_LAMINAS]");
+                    const hasHospitals = textToSearch.includes("[HOSPITAIS]");
+                    const isChecked = !!evalItems[item.id];
+                    const variablesInThisItem = dbEvalVariables.filter(v => textToSearch.includes(`[${v.id}]`));
+                    const hasCustomVariables = variablesInThisItem.length > 0;
 
-                  <div className="space-y-4">
-                    <div className="p-3 bg-slate-50 border border-slate-150 rounded-2xl">
-                       <h5 className="text-sm uppercase font-bold text-slate-700 tracking-wider mb-2">[LABS_INFRA] - Laboratórios (Infraestrutura Crítica)</h5>
-                       {labsInfra.map((lab, index) => (
-                         <div key={index} className="flex gap-2 mb-2">
-                           <input type="text" placeholder="Nome do Lab" value={lab.nome} onChange={(e) => { const n = [...labsInfra]; n[index].nome = e.target.value; setLabsInfra(n); }} className="flex-1 text-sm px-3 py-1.5 border border-slate-200 rounded-lg outline-none focus:border-violet-500" />
-                           <input type="text" placeholder="CNPJ" value={lab.cnpj} onChange={(e) => { const n = [...labsInfra]; n[index].cnpj = e.target.value; setLabsInfra(n); }} className="w-1/3 text-sm px-3 py-1.5 border border-slate-200 rounded-lg outline-none focus:border-violet-500" />
-                           <button onClick={() => setLabsInfra(labsInfra.filter((_, i) => i !== index))} className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
-                         </div>
-                       ))}
-                       <button onClick={() => setLabsInfra([...labsInfra, {nome:"", cnpj:""}])} className="text-sm text-violet-600 font-bold uppercase hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Adicionar</button>
-                    </div>
+                    return (
+                      <div key={item.id} className="p-4 bg-slate-55/70 border border-slate-150 border-r-4 border-r-emerald-400 hover:border-slate-300 rounded-2xl transition-colors block">
+                        <div className="flex items-start gap-3.5">
+                          <input 
+                            id={`eval-item-${item.id}`}
+                            type="checkbox" 
+                            className="mt-1 rounded text-violet-600 focus:ring-violet-500 shrink-0 h-4.5 w-4.5 cursor-pointer"
+                            checked={isChecked}
+                            onChange={(e) => setEvalItems({ ...evalItems, [item.id]: e.target.checked })}
+                          />
+                          <label htmlFor={`eval-item-${item.id}`} className="cursor-pointer flex-1 select-none">
+                            <span className="font-extrabold text-slate-900 font-display block text-sm">{index + 1}. {item.title}</span>
+                            {item.description && (
+                              <p className="text-sm text-slate-500 mt-1 leading-relaxed">
+                                {item.description}
+                              </p>
+                            )}
+                          </label>
+                        </div>
 
-                    <div className="p-3 bg-slate-50 border border-slate-150 rounded-2xl">
-                       <h5 className="text-sm uppercase font-bold text-slate-700 tracking-wider mb-2">[LABS_LAMINAS] - Laboratórios (Leitura de Lâminas)</h5>
-                       {labsLaminas.map((lab, index) => (
-                         <div key={index} className="flex gap-2 mb-2">
-                           <input type="text" placeholder="Nome do Lab" value={lab.nome} onChange={(e) => { const n = [...labsLaminas]; n[index].nome = e.target.value; setLabsLaminas(n); }} className="flex-1 text-sm px-3 py-1.5 border border-slate-200 rounded-lg outline-none focus:border-violet-500" />
-                           <button onClick={() => setLabsLaminas(labsLaminas.filter((_, i) => i !== index))} className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
-                         </div>
-                       ))}
-                       <button onClick={() => setLabsLaminas([...labsLaminas, {nome:""}])} className="text-sm text-violet-600 font-bold uppercase hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Adicionar</button>
-                    </div>
+                        {isChecked && (hasLabsInfra || hasLabsLaminas || hasHospitals || hasCustomVariables) && (
+                          <div className="mt-4 pt-4 border-t border-slate-200/60 space-y-4 animate-in fade-in duration-200">
+                            {variablesInThisItem.map(v => {
+                               const records = customVariablesData[v.id] || [];
+                               return (
+                                  <div key={v.id} className="p-3 bg-white border border-slate-200 rounded-xl space-y-3 shadow-2xs">
+                                     <div className="flex items-center justify-between">
+                                        <h5 className="text-[11px] uppercase font-black text-slate-700 tracking-wider flex items-center gap-1.5">
+                                           ⚙️ [{v.id}] - {v.name}
+                                        </h5>
+                                        <button 
+                                          type="button"
+                                          onClick={() => {
+                                            const newRec: Record<string, string> = {};
+                                            v.fields.forEach(f => newRec[f.key] = "");
+                                            setCustomVariablesData({
+                                              ...customVariablesData,
+                                              [v.id]: [...records, newRec]
+                                            });
+                                          }}
+                                          className="text-xs text-violet-600 hover:text-violet-750 font-black uppercase flex items-center gap-1 cursor-pointer"
+                                        >
+                                           <Plus className="w-3.5 h-3.5" /> Adicionar
+                                        </button>
+                                     </div>
+                                     <div className="space-y-3">
+                                        {records.map((record, idx) => (
+                                          <div key={idx} className="flex gap-2 items-start relative border-l-2 border-slate-200 pl-3">
+                                            <div className="flex-1 grid gap-2 grid-cols-1 sm:grid-cols-2">
+                                              {v.fields.map(f => (
+                                                <input 
+                                                  key={f.key}
+                                                  type="text" 
+                                                  placeholder={f.placeholder || f.label} 
+                                                  value={record[f.key] || ""} 
+                                                  onChange={(e) => {
+                                                    const newRecords = [...records];
+                                                    newRecords[idx] = { ...newRecords[idx], [f.key]: e.target.value };
+                                                    setCustomVariablesData({ ...customVariablesData, [v.id]: newRecords });
+                                                  }} 
+                                                  className="w-full text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 bg-slate-50 focus:bg-white transition-all" 
+                                                />
+                                              ))}
+                                            </div>
+                                            <button 
+                                              onClick={() => {
+                                                const newRecords = records.filter((_, i) => i !== idx);
+                                                setCustomVariablesData({ ...customVariablesData, [v.id]: newRecords });
+                                              }} 
+                                              className="p-1.5 mt-0.5 text-rose-500 hover:bg-rose-50 rounded-lg cursor-pointer shrink-0 transition-colors"
+                                              title="Remover"
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                          </div>
+                                        ))}
+                                        {records.length === 0 && (
+                                          <p className="text-[10px] text-slate-400 italic">Nenhum {v.name.toLowerCase()} adicionado. Clique no botão acima para adicionar.</p>
+                                        )}
+                                     </div>
+                                  </div>
+                               );
+                            })}
+                            
+                            {hasLabsInfra && (
+                              <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-3 shadow-2xs">
+                                <div className="flex items-center justify-between">
+                                  <h5 className="text-[11px] uppercase font-black text-slate-700 tracking-wider flex items-center gap-1.5">
+                                    🏢 [LABS_INFRA] - Laboratórios (Infraestrutura Crítica)
+                                  </h5>
+                                  <button 
+                                    type="button"
+                                    onClick={() => setLabsInfra([...labsInfra, { nome: "", cnpj: "" }])}
+                                    className="text-xs text-violet-600 hover:text-violet-750 font-black uppercase flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" /> Adicionar
+                                  </button>
+                                </div>
+                                <div className="space-y-2">
+                                  {labsInfra.map((lab, idx) => (
+                                    <div key={idx} className="flex gap-2 items-center">
+                                      <input 
+                                        type="text" 
+                                        placeholder="Nome do Lab" 
+                                        value={lab.nome} 
+                                        onChange={(e) => { 
+                                          const n = [...labsInfra]; 
+                                          n[idx].nome = e.target.value; 
+                                          setLabsInfra(n); 
+                                        }} 
+                                        className="flex-1 text-sm px-3 py-1.5 border border-slate-200 rounded-lg outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 bg-slate-50 focus:bg-white transition-all" 
+                                      />
+                                      <input 
+                                        type="text" 
+                                        placeholder="CNPJ" 
+                                        value={lab.cnpj} 
+                                        onChange={(e) => { 
+                                          const n = [...labsInfra]; 
+                                          n[idx].cnpj = e.target.value; 
+                                          setLabsInfra(n); 
+                                        }} 
+                                        className="w-1/3 text-sm px-3 py-1.5 border border-slate-200 rounded-lg outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 bg-slate-50 focus:bg-white transition-all" 
+                                      />
+                                      <button 
+                                        type="button" 
+                                        onClick={() => setLabsInfra(labsInfra.filter((_, i) => i !== idx))} 
+                                        className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                                        title="Remover"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                  {labsInfra.length === 0 && (
+                                    <p className="text-xs text-slate-400 italic font-medium px-1">Nenhum laboratório cadastrado.</p>
+                                  )}
+                                </div>
+                              </div>
+                            )}
 
-                    <div className="p-3 bg-slate-50 border border-slate-150 rounded-2xl">
-                       <h5 className="text-sm uppercase font-bold text-slate-700 tracking-wider mb-2">[HOSPITAIS] - Hospitais</h5>
-                       {hospitals.map((h, index) => (
-                         <div key={index} className="flex gap-2 mb-2">
-                           <input type="text" placeholder="Unidade Hospitalar de..." value={h.nome} onChange={(e) => { const n = [...hospitals]; n[index].nome = e.target.value; setHospitals(n); }} className="flex-1 text-sm px-3 py-1.5 border border-slate-200 rounded-lg outline-none focus:border-violet-500" />
-                           <button onClick={() => setHospitals(hospitals.filter((_, i) => i !== index))} className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
-                         </div>
-                       ))}
-                       <button onClick={() => setHospitals([...hospitals, {nome:""}])} className="text-sm text-violet-600 font-bold uppercase hover:underline flex items-center gap-1"><Plus className="w-3 h-3" /> Adicionar</button>
-                    </div>
-                  </div>
-                </div>
+                            {hasLabsLaminas && (
+                              <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-3 shadow-2xs">
+                                <div className="flex items-center justify-between">
+                                  <h5 className="text-[11px] uppercase font-black text-slate-700 tracking-wider flex items-center gap-1.5">
+                                    🔬 [LABS_LAMINAS] - Laboratórios (Leitura de Lâminas)
+                                  </h5>
+                                  <button 
+                                    type="button"
+                                    onClick={() => setLabsLaminas([...labsLaminas, { nome: "" }])}
+                                    className="text-xs text-violet-600 hover:text-violet-750 font-black uppercase flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" /> Adicionar
+                                  </button>
+                                </div>
+                                <div className="space-y-2">
+                                  {labsLaminas.map((lab, idx) => (
+                                    <div key={idx} className="flex gap-2 items-center">
+                                      <input 
+                                        type="text" 
+                                        placeholder="Nome do Lab" 
+                                        value={lab.nome} 
+                                        onChange={(e) => { 
+                                          const n = [...labsLaminas]; 
+                                          n[idx].nome = e.target.value; 
+                                          setLabsLaminas(n); 
+                                        }} 
+                                        className="flex-1 text-sm px-3 py-1.5 border border-slate-200 rounded-lg outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 bg-slate-50 focus:bg-white transition-all" 
+                                      />
+                                      <button 
+                                        type="button" 
+                                        onClick={() => setLabsLaminas(labsLaminas.filter((_, i) => i !== idx))} 
+                                        className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                                        title="Remover"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                  {labsLaminas.length === 0 && (
+                                    <p className="text-xs text-slate-400 italic font-medium px-1">Nenhum laboratório cadastrado.</p>
+                                  )}
+                                </div>
+                              </div>
+                            )}
 
-                {/* Dinamycaly Fetched Items from Firestore */}
-                  {dbEvalItems.map((item, index) => (
-                    <label key={item.id} className="flex items-start gap-3.5 p-3.5 bg-slate-50/60 border border-slate-150 border-r-4 border-r-emerald-400 hover:border-slate-350 rounded-2xl cursor-pointer transition-colors block">
-                      <input 
-                        type="checkbox" 
-                        className="mt-1 rounded text-violet-600 focus:ring-violet-500 shrink-0 h-4.5 w-4.5"
-                        checked={evalItems[item.id] || false}
-                        onChange={(e) => setEvalItems({ ...evalItems, [item.id]: e.target.checked })}
-                      />
-                      <div>
-                        <span className="font-extrabold text-slate-900 font-display block text-sm">{index + 1}. {item.title}</span>
-                        {item.description && (
-                          <p className="text-sm text-slate-500 mt-1 leading-relaxed">
-                            {item.description}
-                          </p>
+                            {hasHospitals && (
+                              <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-3 shadow-2xs">
+                                <div className="flex items-center justify-between">
+                                  <h5 className="text-[11px] uppercase font-black text-slate-700 tracking-wider flex items-center gap-1.5">
+                                    🏥 [HOSPITAIS] - Hospitais
+                                  </h5>
+                                  <button 
+                                    type="button"
+                                    onClick={() => setHospitals([...hospitals, { nome: "" }])}
+                                    className="text-xs text-violet-600 hover:text-violet-750 font-black uppercase flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" /> Adicionar
+                                  </button>
+                                </div>
+                                <div className="space-y-2">
+                                  {hospitals.map((h, idx) => (
+                                    <div key={idx} className="flex gap-2 items-center">
+                                      <input 
+                                        type="text" 
+                                        placeholder="Unidade Hospitalar de..." 
+                                        value={h.nome} 
+                                        onChange={(e) => { 
+                                          const n = [...hospitals]; 
+                                          n[idx].nome = e.target.value; 
+                                          setHospitals(n); 
+                                        }} 
+                                        className="flex-1 text-sm px-3 py-1.5 border border-slate-200 rounded-lg outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 bg-slate-50 focus:bg-white transition-all" 
+                                      />
+                                      <button 
+                                        type="button" 
+                                        onClick={() => setHospitals(hospitals.filter((_, i) => i !== idx))} 
+                                        className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                                        title="Remover"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                  {hospitals.length === 0 && (
+                                    <p className="text-xs text-slate-400 italic font-medium px-1">Nenhum hospital cadastrado.</p>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         )}
                       </div>
-                    </label>
-                  ))}
+                    );
+                  })}
                 </div>
 
               </div>
 
               {/* Modal Footer */}
-              <div className="p-5 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
-                <span className="text-sm font-bold text-violet-700">
-                  {Object.values(evalItems).filter(Boolean).length} cláusulas ativas na Avaliação Geral
-                </span>
+              <div className="p-5 border-t border-slate-100 bg-slate-50 flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-4">
+                  <span className="text-sm font-bold text-violet-700">
+                    {Object.values(evalItems).filter(Boolean).length} cláusulas ativas na Avaliação Geral
+                  </span>
+                  <button 
+                    onClick={() => {
+                      const cleared: Record<string, boolean> = {};
+                      dbEvalItems.forEach(item => {
+                        cleared[item.id] = false;
+                      });
+                      setEvalItems(cleared);
+                    }}
+                    className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs uppercase tracking-wide rounded-lg cursor-pointer transition-all"
+                  >
+                    Limpar Seleção
+                  </button>
+                </div>
                 <button 
                   onClick={() => setIsEvalModalOpen(false)}
                   className="px-6 py-3 bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-sm rounded-xl cursor-pointer shadow-md active:scale-95 transition-all text-center"

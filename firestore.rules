@@ -48,5 +48,9 @@ service cloud.firestore {
       allow read: if isAuthorizedUser();
       allow write: if isAdmin();
     }
+    match /evaluation_variables/{variableId} {
+      allow read: if isAuthorizedUser();
+      allow write: if isAdmin();
+    }
   }
 }

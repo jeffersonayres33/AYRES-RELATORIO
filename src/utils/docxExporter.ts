@@ -52,11 +52,12 @@ interface ExportMunicipalProps {
   termos: TermoSanitario[];
   checklists: FarmaciaChecklist[];
   customAvaliacaoGeralText?: string;
+  dateFormat?: 'apenas_data' | 'data_hora' | 'sem_data';
 }
 
 export const exportMunicipalDocx = async (
   filename: string, 
-  { selectedCity, filterLabel, filteredEstabs, termos, checklists, customAvaliacaoGeralText }: ExportMunicipalProps
+  { selectedCity, filterLabel, filteredEstabs, termos, checklists, customAvaliacaoGeralText, dateFormat = 'apenas_data' }: ExportMunicipalProps
 ) => {
   const childrenElements: any[] = [];
 
@@ -146,7 +147,13 @@ No Município de ${selectedCity.toUpperCase()} foram realizadas ${filteredEstabs
         cleanPharmaName = tempName || "NÃO INFORMADO";
       }
 
-      const dataInicio = t?.dtInicio && t.dtInicio !== "null" ? t.dtInicio.split(" ")[0] : "NÃO INFORMADO";
+      const dataFull = t?.dtInicio && t.dtInicio !== "null" ? t.dtInicio : "NÃO INFORMADO";
+      let dataFinal = dataFull;
+      if (dateFormat === "apenas_data" && dataFull !== "NÃO INFORMADO") {
+        dataFinal = dataFull.split(" ")[0];
+      } else if (dateFormat === "sem_data") {
+        dataFinal = "";
+      }
       
       let rtPresCheck = "NÃO INFORMADO";
       if (t?.rtPresente === "SIM") {
@@ -179,11 +186,14 @@ No Município de ${selectedCity.toUpperCase()} foram realizadas ${filteredEstabs
         childrenElements.push(createParagraph(`Auto de Infração: ${t.nrSeqAuto}`, { size: 24, before: 30, after: 30 }));
       }
       
-      childrenElements.push(createParagraph(`Data: ${dataInicio}`, { size: 24, before: 30, after: 30 }));
+      if (dataFinal !== "") {
+        childrenElements.push(createParagraph(`Data: ${dataFinal}`, { size: 24, before: 30, after: 30 }));
+      }
+      
       childrenElements.push(createParagraph(`Lote: ${loteVal}`, { size: 24, before: 30, after: 30 }));
       childrenElements.push(createParagraph(`Farmacêutico (a): ${cleanPharmaName.toUpperCase()}`, { size: 24, before: 30, after: 30 }));
-      childrenElements.push(createParagraph(`CRF AM: ${crfAm.toUpperCase()}`, { size: 24, before: 30, after: 30 }));
-      childrenElements.push(createParagraph(`Responsável Técnico: ${rtPresCheck}`, { size: 24, before: 30, after: 30 }));
+      childrenElements.push(createParagraph(`CRF AM: ${getValueOrFallback(t?.inscricaoRtPresente)}`, { size: 24, before: 30, after: 30 }));
+      childrenElements.push(createParagraph(`Responsável Técnico: ${getValueOrFallback(t?.nomeRtPresente).toUpperCase()}`, { size: 24, before: 30, after: 30 }));
       childrenElements.push(createParagraph(`Inf. Prestadas Por: ${ipPor.toUpperCase()}`, { size: 24, before: 30, after: 30 }));
       childrenElements.push(createParagraph(`Cargo: ${cargo.toUpperCase()}`, { size: 24, before: 30, after: 30 }));
       childrenElements.push(createParagraph(`RG: ${rgVal.toUpperCase()}`, { size: 24, before: 30, after: 30 }));

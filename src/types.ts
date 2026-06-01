@@ -44,6 +44,7 @@ export interface TermoSanitario {
   ifpRg: string;
   ifpCpf: string;
   nomeRtPresente: string;
+  inscricaoRtPresente?: string;
   rtPresente: string;
   inspetorFiscalizacao: string;
   encontrava?: string;
@@ -123,3 +124,17 @@ export interface EvalItem {
   order: number;
   defaultChecked?: boolean;
 }
+
+export interface EvalVariableField {
+  key: string;
+  label: string;
+  placeholder?: string;
+}
+
+export interface EvalVariable {
+  id: string; // e.g. "LABS_INFRA" - placeholder will be [LABS_INFRA]
+  name: string;
+  formatPattern: string; // e.g. "Laboratório {nome} (CNPJ {cnpj})"
+  fields: EvalVariableField[];
+}
+

@@ -79,7 +79,7 @@ export default function AuthLayer({ children }: { children: React.ReactNode }) {
       await signInWithPopup(auth, provider);
     } catch(e: any) {
       if (e.code !== 'auth/popup-closed-by-user') {
-         setErrorMsg("Erro ao fazer login. Tente novamente.");
+         setErrorMsg(`Erro ao fazer login (${e.code || e.message || "Erro desconhecido"}).`);
       }
     }
   };
@@ -97,10 +97,10 @@ export default function AuthLayer({ children }: { children: React.ReactNode }) {
 
   if (!isAuthorized) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-[#f0f2f5] p-4 text-slate-800">
-         <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-xl border border-slate-100 flex flex-col items-center text-center">
+      <div className="flex min-h-screen w-screen items-center justify-center bg-[#f0f2f5] p-6 text-slate-800">
+         <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-xl border border-slate-100 flex flex-col items-center text-center my-8">
             <div className="w-16 h-16 bg-violet-100 text-violet-600 rounded-full flex items-center justify-center mb-6">
-              <ShieldAlert className="w-8 h-8" />
+               <ShieldAlert className="w-8 h-8" />
             </div>
             <h1 className="text-xl font-extrabold font-display uppercase tracking-tight text-slate-900 mb-2">Acesso Fechado</h1>
             <p className="text-base text-slate-500 font-medium mb-8">
@@ -108,18 +108,38 @@ export default function AuthLayer({ children }: { children: React.ReactNode }) {
             </p>
 
             {errorMsg && (
-              <div className="w-full bg-rose-50 text-rose-700 p-3 rounded-lg flex items-center gap-3 text-sm font-bold text-left px-4 mb-6 shadow-sm border border-rose-100">
-                <AlertTriangle className="w-5 h-5 shrink-0" />
-                {errorMsg}
+              <div className="w-full bg-rose-50 text-rose-700 p-4 rounded-2xl flex flex-col gap-2 text-sm font-bold text-left px-4 mb-6 shadow-sm border border-rose-100">
+                <div className="flex items-center gap-2.5">
+                  <AlertTriangle className="w-5 h-5 shrink-0" />
+                  <span>{errorMsg}</span>
+                </div>
+                {errorMsg.toLowerCase().includes("domain") && (
+                  <p className="text-[11px] font-medium text-rose-600 mt-1 leading-normal">
+                    Este erro geralmente ocorre porque o domínio de hospedagem atual (como o GitHub Pages) não está autorizado no Firebase Console. Siga as instruções abaixo para corrigir.
+                  </p>
+                )}
               </div>
             )}
 
             <button 
                onClick={handleLogin}
-               className="w-full bg-slate-900 hover:bg-violet-600 text-white font-black py-4 rounded-xl transition-all font-sans uppercase tracking-widest text-sm shadow-md"
+               className="w-full bg-slate-900 hover:bg-violet-600 text-white font-black py-4 rounded-xl transition-all font-sans uppercase tracking-widest text-sm shadow-md cursor-pointer"
             >
               Fazer Login com Google
             </button>
+
+            <div className="mt-8 text-left bg-slate-50 border border-slate-200 p-4.5 rounded-2xl w-full">
+              <h2 className="text-xs font-extrabold uppercase tracking-widest text-slate-700 mb-2">💡 Deploy no GitHub Pages / Sites Externos</h2>
+              <p className="text-xs text-slate-500 leading-relaxed font-medium">
+                Se você fez o deploy da aplicação no <strong>GitHub Pages</strong> e está recebendo "Acesso Negado" ou erro de domínio, siga os passos abaixo:
+              </p>
+              <ol className="list-decimal list-inside text-xs text-slate-500 mt-2.5 space-y-2 font-medium leading-relaxed">
+                <li>Acesse o <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" className="text-violet-600 hover:underline font-extrabold">Firebase Console</a>.</li>
+                <li>Vá no painel do seu projeto &gt; <strong>Authentication</strong> (Autenticação) &gt; aba <strong>Settings</strong> (Configurações) &gt; área de <strong>Authorized Domains</strong> (Domínios Autorizados).</li>
+                <li>Clique em <strong>Add domain</strong> (Adicionar domínio) e insira o link da sua página, por exemplo: <code className="bg-slate-200 px-1 py-0.5 rounded font-mono text-[11px]">seu-usuario.github.io</code></li>
+                <li>Além disso, certifique-se de que o seu e-mail do Google está cadastrado no banco de dados como e-mail autorizado na área de administração.</li>
+              </ol>
+            </div>
          </div>
       </div>
     );

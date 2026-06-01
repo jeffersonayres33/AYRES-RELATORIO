@@ -3,6 +3,7 @@ import { collection, getDocs, doc, setDoc, deleteDoc } from "firebase/firestore"
 import { db, auth } from "../lib/firebase";
 import { Users, UserPlus, Trash2, Mail, Shield, Clock, Settings, FileText } from "lucide-react";
 import GeneralEvalConfig from "./GeneralEvalConfig";
+import { useLoading } from "../contexts/LoadingContext";
 
 interface AuthorizedEmail {
   email: string;
@@ -18,6 +19,9 @@ export default function AdminPanel() {
   const [newRole, setNewRole] = useState("user");
   const [error, setError] = useState<string | null>(null);
   const [adminTab, setAdminTab] = useState<"users" | "eval">("users");
+
+  const { showLoading, hideLoading } = useLoading();
+  const [confirmDeleteUser, setConfirmDeleteUser] = useState<string | null>(null);
 
   const fetchUsers = async () => {
     try {
@@ -46,6 +50,7 @@ export default function AdminPanel() {
        return;
     }
     setError(null);
+    showLoading("Cadastrando usuário...");
     try {
       const sanitizedEmail = newEmail.trim().toLowerCase();
       const docRef = doc(db, "authorized_users", sanitizedEmail);
@@ -56,10 +61,12 @@ export default function AdminPanel() {
         role: newRole
       });
       setNewEmail("");
-      fetchUsers();
+      await fetchUsers();
     } catch(e: any) {
        console.error(e);
        setError("Falha ao adicionar usuário. Você tem permissão?");
+    } finally {
+       hideLoading();
     }
   };
 
@@ -72,13 +79,16 @@ export default function AdminPanel() {
        setError("O administrador raiz não pode ser removido.");
        return;
     }
-    if (!window.confirm(`Remover definitivamente o acesso de ${email}?`)) return;
     
+    showLoading("Removendo usuário...");
     try {
       await deleteDoc(doc(db, "authorized_users", email));
-      fetchUsers();
+      await fetchUsers();
     } catch(e: any) {
       setError("Falha ao remover usuário.");
+    } finally {
+      hideLoading();
+      setConfirmDeleteUser(null);
     }
   };
 
@@ -212,13 +222,30 @@ export default function AdminPanel() {
                            </div>
                          </div>
                          
-                         <button
-                           onClick={() => handleRemoveUser(u.email)}
-                           className="p-2 bg-white border border-slate-200 text-rose-500 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 rounded-xl transition-all self-end sm:self-auto cursor-pointer flex items-center justify-center shrink-0"
-                           title="Revogar Acesso"
-                         >
-                           <Trash2 className="w-4 h-4" />
-                         </button>
+                         {confirmDeleteUser === u.email ? (
+                           <div className="flex gap-2 items-center">
+                             <button
+                               onClick={() => setConfirmDeleteUser(null)}
+                               className="px-3 py-1.5 text-xs font-bold bg-slate-100 text-slate-500 rounded-lg hover:bg-slate-200 transition-all"
+                             >
+                               Cancelar
+                             </button>
+                             <button
+                               onClick={() => handleRemoveUser(u.email)}
+                               className="px-3 py-1.5 text-xs font-bold bg-rose-500 text-white rounded-lg hover:bg-rose-600 shadow-sm transition-all"
+                             >
+                               Confirmar
+                             </button>
+                           </div>
+                         ) : (
+                           <button
+                             onClick={() => setConfirmDeleteUser(u.email)}
+                             className="p-2 bg-white border border-slate-200 text-rose-500 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 rounded-xl transition-all self-end sm:self-auto cursor-pointer flex items-center justify-center shrink-0"
+                             title="Revogar Acesso"
+                           >
+                             <Trash2 className="w-4 h-4" />
+                           </button>
+                         )}
                        </div>
                     ))}
                   </div>

@@ -147,6 +147,7 @@ export const parseFemXML = (xmlContent: string): TermoSanitario[] => {
         ifpRg: getTagText(item, "IfpRg"),
         ifpCpf: getTagText(item, "IfpCpf"),
         nomeRtPresente: getTagText(item, "NomeRtPresente"),
+        inscricaoRtPresente: getTagText(item, "InscricaoRtPresente", "NÃO INFORMADO"),
         rtPresente: getTagText(item, "RTPresente", "NÃO"),
         inspetorFiscalizacao: getTagText(item, "InspetorFiscalizacao", "INSPETOR COORDENADOR"),
         encontrava: getTagText(item, "Encontrava", "null")

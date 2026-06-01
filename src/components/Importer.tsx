@@ -15,7 +15,6 @@ import {
 import { parseLoteXML, parseTermos0XML, parseChecklistXML, parseNovosCadastros20XML } from "../utils/xmlParser";
 import { Estabelecimento, TechnicalResponsible, TermoSanitario, FarmaciaChecklist } from "../types";
 import { motion } from "motion/react";
-import { useLoading } from "../contexts/LoadingContext";
 
 interface ImporterProps {
   onDataImported: (data: {
@@ -39,8 +38,6 @@ export default function Importer({ onDataImported }: ImporterProps) {
   const [inspectedXmlType, setInspectedXmlType] = useState<string | null>(null);
   const [inspectedXmlContent, setInspectedXmlContent] = useState<string>("");
 
-  const { showLoading, hideLoading } = useLoading();
-
   const handleDrag = (e: React.DragEvent, type: string, active: boolean) => {
     e.preventDefault();
     e.stopPropagation();
@@ -48,7 +45,6 @@ export default function Importer({ onDataImported }: ImporterProps) {
   };
 
   const processFile = (file: File, type: "lote" | "fem_0" | "fem_20") => {
-    showLoading("Processando arquivo XML...");
     const reader = new FileReader();
     reader.onload = (e) => {
       const content = e.target?.result as string;
@@ -99,8 +95,6 @@ export default function Importer({ onDataImported }: ImporterProps) {
             ...prev,
             [type]: { success: false, msg: `Erro ao analisar XML: arquivo corrompido ou incompatível`, count: 0 }
           }));
-        } finally {
-          hideLoading();
         }
       }, 100); // Slight delay for the spinner to render
     };
