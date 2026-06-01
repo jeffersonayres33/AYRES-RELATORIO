@@ -114,3 +114,12 @@ export interface LicenseStatus {
   expiresAt?: string;
   activationKeyUsed?: string;
 }
+
+export interface EvalItem {
+  id: string;
+  title: string;
+  description: string;
+  paragraph: string;
+  order: number;
+  defaultChecked?: boolean;
+}

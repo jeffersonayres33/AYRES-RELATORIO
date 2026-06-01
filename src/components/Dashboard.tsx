@@ -91,13 +91,13 @@ export default function Dashboard({ estabelecimentos, termos, checklists, onNavi
             <h2 className="text-xl md:text-2xl font-extrabold tracking-tight font-display text-slate-900 leading-tight">
               Painel Integrado de Gestão e automação de Relatórios de inspeções
             </h2>
-            <p className="text-slate-500 text-xs md:text-sm mt-1 max-w-2xl leading-relaxed font-medium">
+            <p className="text-slate-500 text-sm md:text-base mt-1 max-w-2xl leading-relaxed font-medium">
               Consolidação analítica de termos de inspeção, relatórios de RDC 44, dados cadastrais e escalas de responsáveis técnicos para os Fiscais Farmacêuticos do CRF-AM no interior do Amazonas.
             </p>
           </div>
           <div className="flex items-center gap-2.5">
             <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-[10px] font-extrabold text-slate-500 font-mono tracking-widest uppercase bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg select-none">
+            <span className="text-sm font-extrabold text-slate-500 font-mono tracking-widest uppercase bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg select-none">
               SISTEMA HOMOLOGADO
             </span>
           </div>
@@ -112,7 +112,7 @@ export default function Dashboard({ estabelecimentos, termos, checklists, onNavi
             <FileText className="w-5.5 h-5.5" />
           </div>
           <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-display">Inspeções Importadas</span>
+            <span className="text-sm font-bold text-slate-400 uppercase tracking-widest block font-display">Inspeções Importadas</span>
             <span className="text-2xl font-black text-slate-900 tracking-tight font-mono">{totalInspecoes}</span>
           </div>
         </div>
@@ -123,7 +123,7 @@ export default function Dashboard({ estabelecimentos, termos, checklists, onNavi
             <AlertCircle className="w-5.5 h-5.5" />
           </div>
           <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-display">Termos de Intimação</span>
+            <span className="text-sm font-bold text-slate-400 uppercase tracking-widest block font-display">Termos de Intimação</span>
             <span className="text-2xl font-black text-slate-900 tracking-tight font-mono">{totalIntimacoes}</span>
           </div>
         </div>
@@ -134,7 +134,7 @@ export default function Dashboard({ estabelecimentos, termos, checklists, onNavi
             <TrendingUp className="w-5.5 h-5.5" />
           </div>
           <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-display">Autos de Infração</span>
+            <span className="text-sm font-bold text-slate-400 uppercase tracking-widest block font-display">Autos de Infração</span>
             <span className="text-2xl font-black text-slate-900 tracking-tight font-mono">{totalAutos}</span>
           </div>
         </div>
@@ -145,7 +145,7 @@ export default function Dashboard({ estabelecimentos, termos, checklists, onNavi
             <Sparkles className="w-5.5 h-5.5" />
           </div>
           <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-display">Novas Inscrições</span>
+            <span className="text-sm font-bold text-slate-400 uppercase tracking-widest block font-display">Novas Inscrições</span>
             <span className="text-2xl font-black text-slate-900 tracking-tight font-mono">{novosEstabelecimentos}</span>
           </div>
         </div>
@@ -160,10 +160,10 @@ export default function Dashboard({ estabelecimentos, termos, checklists, onNavi
             <div className="flex items-center gap-2">
               <Activity className="w-5.5 h-5.5 text-violet-600" />
               <div>
-                <h3 className="font-extrabold text-slate-900 text-sm font-display tracking-wide uppercase">
+                <h3 className="font-extrabold text-slate-900 text-base font-display tracking-wide uppercase">
                   Volume de Atividades de Fiscalização
                 </h3>
-                <p className="text-[11px] text-slate-400 mt-0.5 font-medium">Indicadores consolidados por município AM</p>
+                <p className="text-sm text-slate-400 mt-0.5 font-medium">Indicadores consolidados por município AM</p>
               </div>
             </div>
 
@@ -177,7 +177,7 @@ export default function Dashboard({ estabelecimentos, termos, checklists, onNavi
                 placeholder="Filtrar Município..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-violet-500 focus:bg-white w-full sm:w-48 transition-all"
+                className="bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-1.5 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-violet-500 focus:bg-white w-full sm:w-48 transition-all"
               />
             </div>
           </div>
@@ -185,8 +185,8 @@ export default function Dashboard({ estabelecimentos, termos, checklists, onNavi
           {cityList.length === 0 ? (
             <div className="text-center py-12 text-slate-400 bg-slate-50/50 rounded-2xl border border-slate-100 p-6">
               <MapPin className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-              <p className="text-sm font-bold text-slate-700">Nenhum dado de viagem importado</p>
-              <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto leading-relaxed">
+              <p className="text-base font-bold text-slate-700">Nenhum dado de viagem importado</p>
+              <p className="text-sm text-slate-500 mt-1 max-w-sm mx-auto leading-relaxed">
                 Para visualizar as análises de volume, vá até a aba de <strong>Importação XML</strong> e faça o upload de seus lotes de controle.
               </p>
             </div>
@@ -194,7 +194,7 @@ export default function Dashboard({ estabelecimentos, termos, checklists, onNavi
             <div className="space-y-6">
               {/* Beautiful Modern Multi-Metric Horizontal Bar List */}
               <div className="space-y-4 bg-slate-50/70 border border-slate-150 p-5 rounded-2xl">
-                <span className="text-[10px] font-black font-mono text-slate-400 uppercase tracking-widest block leading-none mb-1">
+                <span className="text-sm font-black font-mono text-slate-400 uppercase tracking-widest block leading-none mb-1">
                   DETALHAMENTO DE ATIVIDADES DE CAMPO POR MUNICÍPIO
                 </span>
                 
@@ -214,11 +214,11 @@ export default function Dashboard({ estabelecimentos, termos, checklists, onNavi
                     return (
                       <div key={idx} className="bg-white border border-slate-150 p-4 rounded-xl shadow-xs space-y-3 hover:border-violet-300 transition-colors">
                         <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                          <span className="font-extrabold text-xs text-slate-800 uppercase flex items-center gap-1.5">
+                          <span className="font-extrabold text-sm text-slate-800 uppercase flex items-center gap-1.5">
                             <MapPin className="w-3.5 h-3.5 text-violet-650" />
                             {c.cidade}
                           </span>
-                          <span className="text-[9px] font-mono text-slate-400">
+                          <span className="text-sm font-mono text-slate-400">
                             Atos Registrados: <strong className="text-slate-700">{c.inspecoes + c.intimacoes + c.autos + c.novosEstabelecimentos}</strong>
                           </span>
                         </div>
@@ -226,7 +226,7 @@ export default function Dashboard({ estabelecimentos, termos, checklists, onNavi
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                           {/* Inspeções */}
                           <div className="space-y-1">
-                            <div className="flex justify-between items-center text-[9px] font-bold text-slate-500">
+                            <div className="flex justify-between items-center text-sm font-bold text-slate-500">
                               <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-violet-600 rounded-full" /> Inspeções</span>
                               <span className="font-mono font-bold text-slate-800">{c.inspecoes}</span>
                             </div>
@@ -237,7 +237,7 @@ export default function Dashboard({ estabelecimentos, termos, checklists, onNavi
 
                           {/* Intimações */}
                           <div className="space-y-1">
-                            <div className="flex justify-between items-center text-[9px] font-bold text-slate-500">
+                            <div className="flex justify-between items-center text-sm font-bold text-slate-500">
                               <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-amber-500 rounded-full" /> Intimações</span>
                               <span className="font-mono font-bold text-amber-600">{c.intimacoes}</span>
                             </div>
@@ -248,7 +248,7 @@ export default function Dashboard({ estabelecimentos, termos, checklists, onNavi
 
                           {/* Autos */}
                           <div className="space-y-1">
-                            <div className="flex justify-between items-center text-[9px] font-bold text-slate-500">
+                            <div className="flex justify-between items-center text-sm font-bold text-slate-500">
                               <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-rose-500 rounded-full" /> Autos</span>
                               <span className="font-mono font-bold text-rose-600">{c.autos}</span>
                             </div>
@@ -259,7 +259,7 @@ export default function Dashboard({ estabelecimentos, termos, checklists, onNavi
 
                           {/* Novas Empresas */}
                           <div className="space-y-1">
-                            <div className="flex justify-between items-center text-[9px] font-bold text-slate-500">
+                            <div className="flex justify-between items-center text-sm font-bold text-slate-500">
                               <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" /> Novas Empresas</span>
                               <span className="font-mono font-bold text-emerald-600">{c.novosEstabelecimentos}</span>
                             </div>
@@ -274,8 +274,8 @@ export default function Dashboard({ estabelecimentos, termos, checklists, onNavi
                 </div>
 
                 {/* SUM FOOTER OF THE WIDGET */}
-                <div className="flex flex-wrap items-center justify-between gap-4 text-[11px] font-bold text-slate-500 mt-4 px-4 py-3 bg-white hover:border-slate-300 transition-all rounded-xl border border-slate-200">
-                  <span className="font-mono text-[9px] uppercase tracking-wider text-slate-400">Somatório Geral da Viagem:</span>
+                <div className="flex flex-wrap items-center justify-between gap-4 text-sm font-bold text-slate-500 mt-4 px-4 py-3 bg-white hover:border-slate-300 transition-all rounded-xl border border-slate-200">
+                  <span className="font-mono text-sm uppercase tracking-wider text-slate-400">Somatório Geral da Viagem:</span>
                   <div className="flex flex-wrap gap-x-6 gap-y-2">
                     <span className="flex items-center gap-1.5"><span className="w-2 rounded-full bg-violet-600 aspect-square" /> Inspeções: <strong className="text-slate-800 font-mono text-[12px]">{cityList.reduce((acc, c) => acc + c.inspecoes, 0)}</strong></span>
                     <span className="flex items-center gap-1.5"><span className="w-2 rounded-full bg-amber-500 aspect-square" /> Intimações: <strong className="text-slate-800 font-mono text-[12px]">{cityList.reduce((acc, c) => acc + c.intimacoes, 0)}</strong></span>
@@ -287,9 +287,9 @@ export default function Dashboard({ estabelecimentos, termos, checklists, onNavi
 
               {/* Responsive stats table */}
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse">
+                <table className="w-full text-left text-sm border-collapse">
                   <thead>
-                    <tr className="border-b border-slate-200 text-slate-400 uppercase font-black text-[10px] tracking-wider select-none">
+                    <tr className="border-b border-slate-200 text-slate-400 uppercase font-black text-sm tracking-wider select-none">
                       <th className="py-2.5 px-2">Município AM</th>
                       <th className="py-2.5 text-center">Inspeções</th>
                       <th className="py-2.5 text-center text-amber-600">Termos Intimação</th>
@@ -324,20 +324,20 @@ export default function Dashboard({ estabelecimentos, termos, checklists, onNavi
             <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
               <User className="w-5 h-5 text-violet-600" />
               <div>
-                <h3 className="font-extrabold text-slate-900 text-sm font-display tracking-wide uppercase">Inspetores Ativos</h3>
-                <p className="text-[10px] text-slate-400">Equipe ativa nos termos de campo importados</p>
+                <h3 className="font-extrabold text-slate-900 text-base font-display tracking-wide uppercase">Inspetores Ativos</h3>
+                <p className="text-sm text-slate-400">Equipe ativa nos termos de campo importados</p>
               </div>
             </div>
 
             {activeInspectors.length === 0 ? (
-              <div className="text-slate-400 text-xs py-6 text-center italic font-medium">
+              <div className="text-slate-400 text-sm py-6 text-center italic font-medium">
                 Nenhum inspetor encontrado. Importe termos para cruzar os dados de equipe.
               </div>
             ) : (
               <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
                 {activeInspectors.map((ins, i) => (
                   <div key={i} className="flex items-center justify-between p-3 bg-slate-50 border border-slate-150 hover:border-slate-250 rounded-xl transition-all duration-200">
-                    <span className="font-extrabold text-xs text-slate-800 uppercase truncate max-w-[150px]">{ins.nome}</span>
+                    <span className="font-extrabold text-sm text-slate-800 uppercase truncate max-w-[150px]">{ins.nome}</span>
                     <span className="text-[10.5px] font-mono bg-white border border-slate-205 text-violet-600 px-2.5 py-1 rounded-lg font-black shrink-0 shadow-2xs">
                       {ins.count} {ins.count === 1 ? "ação" : "ações"}
                     </span>
@@ -352,14 +352,14 @@ export default function Dashboard({ estabelecimentos, termos, checklists, onNavi
             <div className="bg-amber-50 border border-amber-150 rounded-3xl p-5 shadow-xs space-y-3">
               <div className="flex items-center gap-2 text-amber-700">
                 <AlertCircle className="w-5 h-5 shrink-0" />
-                <span className="font-display font-extrabold text-xs uppercase tracking-wider">Foco Crítico de Exigências</span>
+                <span className="font-display font-extrabold text-sm uppercase tracking-wider">Foco Crítico de Exigências</span>
               </div>
-              <p className="text-[11px] text-amber-850 leading-relaxed font-semibold">
+              <p className="text-sm text-amber-850 leading-relaxed font-semibold">
                 O município de <strong className="text-slate-900 underline font-extrabold">{warningCities[0].cidade}</strong> registrou o maior volume de inconformidades sanitárias, com <strong>{warningCities[0].intimacoes} intimação(ões)</strong> e <strong>{warningCities[0].autos} auto(s) de infração</strong>.
               </p>
               <button
                 onClick={() => onNavigateToTab("cidades")}
-                className="inline-flex items-center gap-1.5 text-xs text-amber-700 font-extrabold hover:text-amber-800 transition-colors"
+                className="inline-flex items-center gap-1.5 text-sm text-amber-700 font-extrabold hover:text-amber-800 transition-colors"
               >
                 Auditar Localidade <ArrowRight className="w-3.5 h-3.5" />
               </button>

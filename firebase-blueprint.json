@@ -1,0 +1,22 @@
+{
+  "entities": {
+    "AuthorizedEmail": {
+      "title": "Authorized Email",
+      "description": "An email address allowed to access the system.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "description": "The user's email address" },
+        "addedBy": { "type": "string", "description": "Email of the admin who added this user" },
+        "createdAt": { "type": "number" },
+        "role": { "type": "string", "enum": ["admin", "user"] }
+      },
+      "required": ["email", "addedBy", "createdAt", "role"]
+    }
+  },
+  "firestore": {
+    "authorized_users/{email}": {
+      "schema": { "$ref": "#/entities/AuthorizedEmail" },
+      "description": "Pre-authorized users identified by their email address as the document ID."
+    }
+  }
+}

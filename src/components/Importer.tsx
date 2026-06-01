@@ -15,6 +15,7 @@ import {
 import { parseLoteXML, parseTermos0XML, parseChecklistXML, parseNovosCadastros20XML } from "../utils/xmlParser";
 import { Estabelecimento, TechnicalResponsible, TermoSanitario, FarmaciaChecklist } from "../types";
 import { motion } from "motion/react";
+import { useLoading } from "../contexts/LoadingContext";
 
 interface ImporterProps {
   onDataImported: (data: {
@@ -38,6 +39,8 @@ export default function Importer({ onDataImported }: ImporterProps) {
   const [inspectedXmlType, setInspectedXmlType] = useState<string | null>(null);
   const [inspectedXmlContent, setInspectedXmlContent] = useState<string>("");
 
+  const { showLoading, hideLoading } = useLoading();
+
   const handleDrag = (e: React.DragEvent, type: string, active: boolean) => {
     e.preventDefault();
     e.stopPropagation();
@@ -45,56 +48,61 @@ export default function Importer({ onDataImported }: ImporterProps) {
   };
 
   const processFile = (file: File, type: "lote" | "fem_0" | "fem_20") => {
+    showLoading("Processando arquivo XML...");
     const reader = new FileReader();
     reader.onload = (e) => {
       const content = e.target?.result as string;
       setInspectedXmlType(type);
       setInspectedXmlContent(content);
 
-      try {
-        if (type === "lote") {
-          const { estabelecimentos, rts } = parseLoteXML(content);
-          setTempEstabs(estabelecimentos);
-          setTempRts(rts);
+      setTimeout(() => {
+        try {
+          if (type === "lote") {
+            const { estabelecimentos, rts } = parseLoteXML(content);
+            setTempEstabs(estabelecimentos);
+            setTempRts(rts);
+            setStatus(prev => ({
+              ...prev,
+              lote: { success: true, msg: `XML LOTE (SISCON) importado com sucesso!`, count: estabelecimentos.length }
+            }));
+            triggerIntegration(estabelecimentos, rts, tempTermos, tempChecklists);
+          } else if (type === "fem_0") {
+            const parsedTermos = parseTermos0XML(content);
+            const parsedChecklists = parseChecklistXML(content); // Checklist elements inside same _0 file
+            setTempTermos(parsedTermos);
+            setTempChecklists(parsedChecklists);
+            setStatus(prev => ({
+              ...prev,
+              fem_0: { success: true, msg: `XML xxxx_0 (Termos e Autos) importado com sucesso!`, count: parsedTermos.length + parsedChecklists.length }
+            }));
+            triggerIntegration(tempEstabs, tempRts, parsedTermos, parsedChecklists);
+          } else if (type === "fem_20") {
+            const parsedNovos = parseNovosCadastros20XML(content);
+            
+            // Append new field-added establishments to total list
+            const mergedEstabs = [...tempEstabs];
+            parsedNovos.forEach(nov => {
+              if (!mergedEstabs.some(x => x.inscricao === nov.inscricao)) {
+                mergedEstabs.push(nov);
+              }
+            });
+            
+            setTempEstabs(mergedEstabs);
+            setStatus(prev => ({
+              ...prev,
+              fem_20: { success: true, msg: `XML xxxx_20 (Empresas Novas) importado!`, count: parsedNovos.length }
+            }));
+            triggerIntegration(mergedEstabs, tempRts, tempTermos, tempChecklists);
+          }
+        } catch (err) {
           setStatus(prev => ({
             ...prev,
-            lote: { success: true, msg: `XML LOTE (SISCON) importado com sucesso!`, count: estabelecimentos.length }
+            [type]: { success: false, msg: `Erro ao analisar XML: arquivo corrompido ou incompatível`, count: 0 }
           }));
-          triggerIntegration(estabelecimentos, rts, tempTermos, tempChecklists);
-        } else if (type === "fem_0") {
-          const parsedTermos = parseTermos0XML(content);
-          const parsedChecklists = parseChecklistXML(content); // Checklist elements inside same _0 file
-          setTempTermos(parsedTermos);
-          setTempChecklists(parsedChecklists);
-          setStatus(prev => ({
-            ...prev,
-            fem_0: { success: true, msg: `XML xxxx_0 (Termos e Autos) importado com sucesso!`, count: parsedTermos.length + parsedChecklists.length }
-          }));
-          triggerIntegration(tempEstabs, tempRts, parsedTermos, parsedChecklists);
-        } else if (type === "fem_20") {
-          const parsedNovos = parseNovosCadastros20XML(content);
-          
-          // Append new field-added establishments to total list
-          const mergedEstabs = [...tempEstabs];
-          parsedNovos.forEach(nov => {
-            if (!mergedEstabs.some(x => x.inscricao === nov.inscricao)) {
-              mergedEstabs.push(nov);
-            }
-          });
-          
-          setTempEstabs(mergedEstabs);
-          setStatus(prev => ({
-            ...prev,
-            fem_20: { success: true, msg: `XML xxxx_20 (Empresas Novas) importado!`, count: parsedNovos.length }
-          }));
-          triggerIntegration(mergedEstabs, tempRts, tempTermos, tempChecklists);
+        } finally {
+          hideLoading();
         }
-      } catch (err) {
-        setStatus(prev => ({
-          ...prev,
-          [type]: { success: false, msg: `Erro ao analisar XML: arquivo corrompido ou incompatível`, count: 0 }
-        }));
-      }
+      }, 100); // Slight delay for the spinner to render
     };
     reader.readAsText(file);
   };
@@ -310,7 +318,7 @@ export default function Importer({ onDataImported }: ImporterProps) {
             <h2 className="text-lg md:text-xl font-extrabold tracking-tight font-display text-slate-900">
               Carga e Cruzamento de Dados (SISCON & FEM)
             </h2>
-            <p className="text-slate-500 text-xs mt-1 leading-relaxed max-w-2xl">
+            <p className="text-slate-500 text-sm mt-1 leading-relaxed max-w-2xl">
               Alimente o sistema com os três arquivos XML gerados pelo SISCON de escritório e pelo aplicativo FEM (tablet de campo) dos fiscais farmacêuticos do Amazonas.
             </p>
           </div>
@@ -321,12 +329,12 @@ export default function Importer({ onDataImported }: ImporterProps) {
           {uploadTargets.map((target) => (
             <div key={target.id} className="flex flex-col space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 font-display">
+                <span className="text-sm font-bold uppercase tracking-widest text-slate-400 font-display">
                   {target.title}
                 </span>
                 <button
                   onClick={() => downloadSampleXML(target.id)}
-                  className="text-[10px] text-violet-700 hover:text-violet-800 flex items-center gap-1 font-black bg-violet-50 border border-violet-100 px-2 py-0.5 rounded cursor-pointer transition-all"
+                  className="text-sm text-violet-700 hover:text-violet-800 flex items-center gap-1 font-black bg-violet-50 border border-violet-100 px-2 py-0.5 rounded cursor-pointer transition-all"
                   title="Baixar XML modelo técnico para teste"
                 >
                   <Download className="w-3 h-3" /> Modelo {target.modelName}
@@ -356,8 +364,8 @@ export default function Importer({ onDataImported }: ImporterProps) {
                   <Upload className="w-6 h-6 text-violet-500" />
                 </div>
                 
-                <p className="text-xs font-bold text-slate-800">Arraste ou clique para enviar</p>
-                <p className="text-[10px] text-slate-500 mt-1 max-w-[200px] leading-tight select-none font-medium">
+                <p className="text-sm font-bold text-slate-800">Arraste ou clique para enviar</p>
+                <p className="text-sm text-slate-500 mt-1 max-w-[200px] leading-tight select-none font-medium">
                   {target.desc}
                 </p>
               </div>
@@ -365,7 +373,7 @@ export default function Importer({ onDataImported }: ImporterProps) {
               {/* Status Indicator */}
               {status[target.id] && (
                 <div 
-                  className={`p-3.5 rounded-xl flex items-start gap-2.5 text-xs font-medium border ${
+                  className={`p-3.5 rounded-xl flex items-start gap-2.5 text-sm font-medium border ${
                     status[target.id].success 
                       ? "bg-emerald-50 border-emerald-150 text-emerald-800" 
                       : "bg-rose-50 border-rose-150 text-rose-800"
@@ -398,16 +406,16 @@ export default function Importer({ onDataImported }: ImporterProps) {
             <div className="flex items-center gap-2">
               <Code className="w-5 h-5 text-violet-500" />
               <div>
-                <h4 className="font-extrabold text-slate-900 text-sm font-display tracking-widest uppercase">
+                <h4 className="font-extrabold text-slate-900 text-base font-display tracking-widest uppercase">
                   Auditor Sintático de XML
                 </h4>
-                <p className="text-[10px] text-slate-400">Verificador automático de tags e conformidade de importação</p>
+                <p className="text-sm text-slate-400">Verificador automático de tags e conformidade de importação</p>
               </div>
             </div>
             
             <button
               onClick={() => { setInspectedXmlType(null); setInspectedXmlContent(""); }}
-              className="p-1 px-3 rounded-lg bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200 font-mono text-[9px] font-bold cursor-pointer transition-colors"
+              className="p-1 px-3 rounded-lg bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200 font-mono text-sm font-bold cursor-pointer transition-colors"
             >
               Fechar Visualização
             </button>
@@ -415,8 +423,8 @@ export default function Importer({ onDataImported }: ImporterProps) {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="md:col-span-1 border border-slate-150 rounded-xl p-4 bg-slate-50/50 space-y-3">
-              <span className="text-[9px] font-mono font-bold text-slate-400 uppercase tracking-widest block">Metadados Detectados</span>
-              <div className="font-mono text-xs space-y-2 text-slate-600">
+              <span className="text-sm font-mono font-bold text-slate-400 uppercase tracking-widest block">Metadados Detectados</span>
+              <div className="font-mono text-sm space-y-2 text-slate-600">
                 <div className="flex justify-between py-1 border-b border-slate-100">
                   <span>Tipo do Arquivo:</span>
                   <span className="font-bold uppercase text-violet-600">{inspectedXmlType}</span>
@@ -437,10 +445,10 @@ export default function Importer({ onDataImported }: ImporterProps) {
             </div>
 
             <div className="md:col-span-2 relative">
-              <span className="absolute top-2 right-3 text-[9px] font-mono font-bold text-slate-400 uppercase select-none">
+              <span className="absolute top-2 right-3 text-sm font-mono font-bold text-slate-400 uppercase select-none">
                 Estilo XML Cru
               </span>
-              <pre className="p-4 bg-slate-55 text-slate-700 rounded-xl border border-slate-150 text-[10px] whitespace-pre font-mono overflow-auto max-h-[160px] max-w-full shadow-inner">
+              <pre className="p-4 bg-slate-55 text-slate-700 rounded-xl border border-slate-150 text-sm whitespace-pre font-mono overflow-auto max-h-[160px] max-w-full shadow-inner">
                 {inspectedXmlContent}
               </pre>
             </div>
