@@ -13,6 +13,8 @@ import {
 } from "docx";
 import { Estabelecimento, TermoSanitario, FarmaciaChecklist } from "../types";
 
+import { DEFAULT_FULL_REPORT_TEMPLATE } from "./fullReportTemplate";
+
 // Helper for standard paragraphs - Defaulting to Times New Roman, 12pt (size 24), pure black, left aligned
 const createParagraph = (text: string, options: { 
   bold?: boolean; 
@@ -55,8 +57,7 @@ interface ExportMunicipalProps {
   dateFormat?: 'apenas_data' | 'data_hora' | 'sem_data';
 }
 
-export const exportMunicipalDocx = async (
-  filename: string, 
+export const generateMunicipalReportChildren = (
   { selectedCity, filterLabel, filteredEstabs, termos, checklists, customAvaliacaoGeralText, dateFormat = 'apenas_data' }: ExportMunicipalProps
 ) => {
   const childrenElements: any[] = [];
@@ -285,6 +286,14 @@ No Município de ${selectedCity.toUpperCase()} foram realizadas ${filteredEstabs
       );
     });
   }
+  return childrenElements;
+};
+
+export const exportMunicipalDocx = async (
+  filename: string,
+  options: ExportMunicipalProps
+) => {
+  const childrenElements = generateMunicipalReportChildren(options);
 
   const doc = new Document({
     sections: [
@@ -308,6 +317,185 @@ No Município de ${selectedCity.toUpperCase()} foram realizadas ${filteredEstabs
   URL.revokeObjectURL(url);
 };
 
+
+import { saveAs } from "file-saver";
+import PizZip from "pizzip";
+import Docxtemplater from "docxtemplater";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../lib/firebase";
+
+export const exportFullMunicipalDocx = async (
+  filename: string,
+  options: ExportMunicipalProps,
+  travelFiscais: string
+) => {
+  const { selectedCity, filterLabel, filteredEstabs, termos, checklists, customAvaliacaoGeralText, dateFormat = 'apenas_data' } = options;
+
+  let templateBase64 = null;
+  try {
+    const docRef = doc(db, "settings", "reportTemplate");
+    const snap = await getDoc(docRef);
+    if (snap.exists() && snap.data().totalChunks !== undefined) {
+      const totalChunks = snap.data().totalChunks;
+      let fullBase64 = "";
+      
+      for (let i = 0; i < totalChunks; i++) {
+        const chunkRef = doc(db, `settings/reportTemplate/chunks/chunk_${i}`);
+        const chunkSnap = await getDoc(chunkRef);
+        if (chunkSnap.exists()) {
+          fullBase64 += chunkSnap.data().data;
+        }
+      }
+      
+      if (fullBase64.length > 0) {
+        templateBase64 = fullBase64;
+      }
+    }
+  } catch (e) {
+    console.error("Erro ao buscar template no Firebase", e);
+  }
+
+  // Extract variables
+  const nomeFiscalStr = travelFiscais || "CRF/AM (Fiscais)";
+  const crfFiscalStr = ""; // We can extract it if needed, or leave empty
+  const dateFormatted = new Date().toLocaleDateString('pt-BR', { year: 'numeric', month: 'long', day: 'numeric' });
+  const localDataStr = `${selectedCity}, ${dateFormatted}`;
+
+  // Build the simple report as a plain text string instead of Paragraph elements for docxtemplater
+  let relatorioSimplesText = "";
+  
+  if (filteredEstabs.length === 0) {
+    relatorioSimplesText = `Nenhum estabelecimento encontrado com este filtro: ${filterLabel}`;
+  } else {
+    filteredEstabs.forEach((estab, idx) => {
+      relatorioSimplesText += `${idx + 1}. ${estab.razaoSocial}\n`;
+      relatorioSimplesText += `CNPJ: ${estab.cnpj}   -   Inscrição CRF: ${estab.inscricao}\n`;
+      if (estab.proprietario) relatorioSimplesText += `Proprietário: ${estab.proprietario}\n`;
+      if (estab.nomeFantasia && estab.nomeFantasia !== estab.razaoSocial) relatorioSimplesText += `Nome de Fantasia: ${estab.nomeFantasia}\n`;
+
+      let hasIssues = false;
+      
+      const t = termos.find(term => term.estabelecimentoId === estab.inscricao);
+      
+      if (t) {
+        if (t.nrSeqFormulario && t.nrSeqFormulario !== "null") {
+          relatorioSimplesText += `Formulário: ${t.nrSeqFormulario}\n`;
+          hasIssues = true;
+        }
+        if (t.nrSeqIntimacao && t.nrSeqIntimacao !== "null") {
+          relatorioSimplesText += `Intimação: ${t.nrSeqIntimacao}\n`;
+          hasIssues = true;
+        }
+        if (t.nrSeqAuto && t.nrSeqAuto !== "null") {
+          relatorioSimplesText += `Autuação: ${t.nrSeqAuto}\n`;
+          hasIssues = true;
+        }
+      }
+      
+      const checklist = checklists.find(c => c.estabelecimentoId === estab.inscricao);
+      if (checklist) {
+        const trueFaltas = Object.entries(checklist.items || {}).filter(([_, val]) => val === true).map(([key]) => key);
+        if (trueFaltas.length > 0) {
+          hasIssues = true;
+          relatorioSimplesText += `Irregularidades / Observações:\n`;
+          trueFaltas.forEach(falta => {
+            relatorioSimplesText += `  - ${falta}\n`;
+          });
+        }
+      }
+
+      if (!hasIssues) {
+        relatorioSimplesText += `Status: Sem pendências registradas.\n`;
+      }
+      
+      relatorioSimplesText += `\n------------------------------------------------------------\n\n`;
+    });
+    
+    if (customAvaliacaoGeralText) {
+      relatorioSimplesText += `AVALIAÇÃO GERAL:\n${customAvaliacaoGeralText}\n`;
+    }
+  }
+
+  // If no template in DB, use the fallback basic docx generation
+  if (!templateBase64) {
+    alert("Nenhum template customizado foi encontrado no Painel do Administrador. O sistema fará a exportação usando o formato básico.");
+    
+    const templateText = DEFAULT_FULL_REPORT_TEMPLATE;
+    const templateLines = templateText.split(/\r?\n/);
+    const fullChildren: any[] = [];
+
+    for (let line of templateLines) {
+      if (line.includes("[RELATORIO_SIMPLES]")) {
+        const simpleChildren = generateMunicipalReportChildren(options);
+        fullChildren.push(...simpleChildren);
+      } else {
+        let resolvedLine = line;
+        resolvedLine = resolvedLine.replace(/\[NOME_FISCAL\]/g, nomeFiscalStr);
+        resolvedLine = resolvedLine.replace(/\[CRF_FISCAL\]/g, crfFiscalStr);
+        resolvedLine = resolvedLine.replace(/\[LOCAL_DATA_POR_EXTENSO\]/g, localDataStr);
+        
+        const isHeader = resolvedLine.match(/^[A-Z0-9.\- \t]+$/) && resolvedLine.length > 3 && !resolvedLine.includes(",");
+        
+        fullChildren.push(
+          new Paragraph({
+            alignment: AlignmentType.LEFT,
+            spacing: { before: 80, after: 80 },
+            children: [
+              new TextRun({
+                text: resolvedLine,
+                bold: isHeader ? true : false,
+                size: 24,
+                font: "Times New Roman"
+              })
+            ]
+          })
+        );
+      }
+    }
+
+    const doc = new Document({
+      sections: [{ properties: {}, children: fullChildren }],
+    });
+    const blob = await Packer.toBlob(doc);
+    saveAs(blob, filename.endsWith(".docx") ? filename : filename + ".docx");
+    return;
+  }
+
+  // We have a custom template DOCX URL! Use docxtemplater.
+  try {
+    const binaryString = window.atob(templateBase64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+    
+    const zip = new PizZip(bytes.buffer);
+    const doc = new Docxtemplater(zip, {
+        paragraphLoop: true,
+        linebreaks: true,
+        delimiters: { start: "[", end: "]" }
+    });
+
+    // docxtemplater will now replace tags inside [ ]
+    doc.render({
+        NOME_FISCAL: nomeFiscalStr,
+        CRF_FISCAL: crfFiscalStr,
+        LOCAL_DATA_POR_EXTENSO: localDataStr,
+        RELATORIO_SIMPLES: relatorioSimplesText
+    });
+
+    const out = doc.getZip().generate({
+        type: "blob",
+        mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    });
+
+    saveAs(out, filename.endsWith(".docx") ? filename : filename + ".docx");
+  } catch (error) {
+    console.error("Error generating docx from template", error);
+    alert("Ocorreu um erro ao gerar o documento usando o template enviado. Verifique se o formato das variáveis está correto.");
+  }
+};
 
 interface ExportTravelProps {
   travelFiscais: string;

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { collection, getDocs, doc, setDoc, deleteDoc } from "firebase/firestore";
 import { db, auth } from "../lib/firebase";
-import { Users, UserPlus, Trash2, Mail, Shield, Clock, Settings, FileText } from "lucide-react";
+import { Users, UserPlus, Trash2, Mail, Shield, Clock, Settings, FileText, FileSearch } from "lucide-react";
 import GeneralEvalConfig from "./GeneralEvalConfig";
+import TemplateConfig from "./TemplateConfig";
 import { useLoading } from "../contexts/LoadingContext";
 
 interface AuthorizedEmail {
@@ -18,7 +19,7 @@ export default function AdminPanel() {
   const [newEmail, setNewEmail] = useState("");
   const [newRole, setNewRole] = useState("user");
   const [error, setError] = useState<string | null>(null);
-  const [adminTab, setAdminTab] = useState<"users" | "eval">("users");
+  const [adminTab, setAdminTab] = useState<"users" | "eval" | "template">("users");
 
   const { showLoading, hideLoading } = useLoading();
   const [confirmDeleteUser, setConfirmDeleteUser] = useState<string | null>(null);
@@ -122,6 +123,12 @@ export default function AdminPanel() {
              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-sm uppercase tracking-widest transition-all whitespace-nowrap ${adminTab === "eval" ? "bg-violet-600 text-white shadow-md shadow-violet-600/20" : "bg-slate-50 text-slate-500 hover:bg-slate-100"}`}
            >
              <FileText className="w-4 h-4" /> Construtor da Avaliação Geral
+           </button>
+           <button
+             onClick={() => setAdminTab("template")}
+             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-sm uppercase tracking-widest transition-all whitespace-nowrap ${adminTab === "template" ? "bg-violet-600 text-white shadow-md shadow-violet-600/20" : "bg-slate-50 text-slate-500 hover:bg-slate-100"}`}
+           >
+             <FileSearch className="w-4 h-4" /> Modelo de Relatório
            </button>
         </div>
       </div>
@@ -253,8 +260,10 @@ export default function AdminPanel() {
              </div>
           </div>
         </div>
-      ) : (
+      ) : adminTab === "eval" ? (
         <GeneralEvalConfig />
+      ) : (
+        <TemplateConfig />
       )}
     </div>
   );

@@ -26,7 +26,7 @@ import { collection, getDocs } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { Estabelecimento, TermoSanitario, FarmaciaChecklist, EvalItem, EvalVariable } from "../types";
 import { motion, AnimatePresence } from "motion/react";
-import { exportMunicipalDocx, exportTravelDocx } from "../utils/docxExporter";
+import { exportMunicipalDocx, exportTravelDocx, exportFullMunicipalDocx } from "../utils/docxExporter";
 
 interface TripOverviewProps {
   estabelecimentos: Estabelecimento[];
@@ -320,6 +320,41 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
     });
   };
 
+  const downloadFullMunicipalReport = async () => {
+    if (!selectedCity) return;
+    
+    // Filter establishments in this city
+    const filteredEstabs = cityEstabs.filter(e => {
+      const t = termos.find(term => term.estabelecimentoId === e.inscricao);
+      const isIntimado = !!(t?.nrSeqIntimacao && t.nrSeqIntimacao !== "null");
+      const isAutuado = !!(t?.nrSeqAuto && t.nrSeqAuto !== "null");
+
+      if (municipalFilter === "intimados") return isIntimado;
+      if (municipalFilter === "autuados") return isAutuado;
+      if (municipalFilter === "intimados_autuados") return isIntimado || isAutuado;
+      return true; // "todos"
+    });
+
+    const filterLabels = {
+      todos: "Todos os Estabelecimentos",
+      intimados: "Apenas Estabelecimentos Intimados",
+      autuados: "Apenas Estabelecimentos Autuados",
+      intimados_autuados: "Estabelecimentos Intimados e Autuados"
+    };
+
+    const compiledText = getCompiledEvaluationText();
+
+    await exportFullMunicipalDocx(`Relatorio_Completo_${selectedCity.toUpperCase()}`, {
+      selectedCity,
+      filterLabel: filterLabels[municipalFilter],
+      filteredEstabs,
+      termos,
+      checklists,
+      customAvaliacaoGeralText: compiledText,
+      dateFormat
+    }, travelFiscais);
+  };
+
   const downloadTravelSummary = async () => {
     const totalEstabs = visibleEstabelecimentos.length;
     const totalTermos = termos.filter(t => visibleEstabelecimentos.some(e => e.inscricao === t.estabelecimentoId)).length;
@@ -601,12 +636,18 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
             </div>
           </div>
 
-          <div className="mt-6 pt-4 border-t border-slate-100">
+          <div className="mt-6 pt-4 border-t border-slate-100 space-y-3">
             <button
               onClick={downloadMunicipalReport}
               className="w-full flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-500 text-white font-extrabold text-sm px-5 py-3.5 rounded-xl cursor-pointer shadow-md transition-all active:translate-y-0.5"
             >
-              <FileDown className="w-4 h-4 animate-bounce" /> Exportar Relatório de {selectedCity} (.DOCX)
+              <FileDown className="w-4 h-4" /> Exportar Relatório Simples de {selectedCity} (.DOCX)
+            </button>
+            <button
+              onClick={downloadFullMunicipalReport}
+              className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-sm px-5 py-3.5 rounded-xl cursor-pointer shadow-md transition-all active:translate-y-0.5"
+            >
+              <FileDown className="w-4 h-4 animate-bounce" /> Exportar Relatório completo de {selectedCity} (.DOCX)
             </button>
           </div>
         </div>
