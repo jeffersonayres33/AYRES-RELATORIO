@@ -403,8 +403,39 @@ export const exportFullMunicipalDocx = async (
     return "NÃO INFORMADO";
   };
 
+  // Fetch Name Mappings
+  const nameMappings: {namePart: string; fullNameValue: string}[] = [];
+  try {
+    const mappingsSnap = await getDocs(collection(db, "fiscal_name_mappings"));
+    mappingsSnap.forEach(d => {
+      const data = d.data();
+      if (data.namePart && data.fullNameValue) {
+        nameMappings.push({ namePart: data.namePart, fullNameValue: data.fullNameValue });
+      }
+    });
+  } catch (e) {
+    console.error("Erro ao carregar mapeamentos de Nome", e);
+  }
+
+  const getFullNameForName = (name: string) => {
+    const upperName = name.toUpperCase();
+    for (const m of nameMappings) {
+      if (upperName.includes(m.namePart)) {
+        return m.fullNameValue;
+      }
+    }
+    // Hardcoded defaults to ensure tests/current users aren't broken, if any. 
+    // They requested to be able to add other full names.
+    return name;
+  };
+
+  // Convert incoming text to full names before further processing
+  let processedTravelFiscais = travelFiscais || "CRF/AM (Fiscais)";
+  const initialNames = processedTravelFiscais.split(" / ");
+  processedTravelFiscais = initialNames.map(f => getFullNameForName(f.trim())).join(" / ");
+
   // Extract variables
-  const nomeFiscalStr = travelFiscais || "CRF/AM (Fiscais)";
+  const nomeFiscalStr = processedTravelFiscais;
   const fiscalNames = nomeFiscalStr.split(" / ");
   const crfFiscalStr = fiscalNames.map(f => getCrfForName(f.trim())).join(" / ");
   const dateFormatted = new Date().toLocaleDateString('pt-BR', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -698,6 +729,35 @@ export const exportTravelDocx = async (
   { travelFiscais, travelPeriod, uniqueCities, countFiscalizados, countIntimados, countAutuados, countNovos, citySummaries }: ExportTravelProps
 ) => {
   const childrenElements: any[] = [];
+
+  const nameMappings: {namePart: string; fullNameValue: string}[] = [];
+  try {
+    const mappingsSnap = await getDocs(collection(db, "fiscal_name_mappings"));
+    mappingsSnap.forEach(d => {
+      const data = d.data();
+      if (data.namePart && data.fullNameValue) {
+        nameMappings.push({ namePart: data.namePart, fullNameValue: data.fullNameValue });
+      }
+    });
+  } catch (e) {
+    console.error("Erro ao carregar mapeamentos de Nome", e);
+  }
+
+  const getFullNameForName = (name: string) => {
+    const upperName = name.toUpperCase();
+    for (const m of nameMappings) {
+      if (upperName.includes(m.namePart)) {
+        return m.fullNameValue;
+      }
+    }
+    return name;
+  };
+
+  let processedTravelFiscais = travelFiscais || "CRF/AM (Fiscais)";
+  processedTravelFiscais = processedTravelFiscais.split(" / ").map(f => getFullNameForName(f.trim())).join(" / ");
+  
+  // Use the processed names within the generator
+  travelFiscais = processedTravelFiscais;
 
   // Header section
   childrenElements.push(

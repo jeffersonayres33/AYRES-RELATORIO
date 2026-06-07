@@ -6,6 +6,7 @@ import GeneralEvalConfig from "./GeneralEvalConfig";
 import TemplateConfig from "./TemplateConfig";
 import CustomVariables from "./CustomVariables";
 import CRFMappingConfig from "./CRFMappingConfig";
+import NameMappingConfig from "./NameMappingConfig";
 import { useLoading } from "../contexts/LoadingContext";
 
 interface AuthorizedEmail {
@@ -271,7 +272,10 @@ export default function AdminPanel() {
       ) : adminTab === "eval" ? (
         <GeneralEvalConfig />
       ) : adminTab === "fiscais" ? (
-        <CRFMappingConfig />
+        <div className="space-y-6">
+          <CRFMappingConfig />
+          <NameMappingConfig />
+        </div>
       ) : (
         <div className="space-y-6">
           <TemplateConfig />
