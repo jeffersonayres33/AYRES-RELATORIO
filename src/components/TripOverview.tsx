@@ -27,6 +27,7 @@ import { db } from "../lib/firebase";
 import { Estabelecimento, TermoSanitario, FarmaciaChecklist, EvalItem, EvalVariable } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import { exportMunicipalDocx, exportTravelDocx, exportFullMunicipalDocx } from "../utils/docxExporter";
+import { useLoading } from "../contexts/LoadingContext";
 
 interface TripOverviewProps {
   estabelecimentos: Estabelecimento[];
@@ -35,12 +36,25 @@ interface TripOverviewProps {
 }
 
 export default function TripOverview({ estabelecimentos, termos, checklists }: TripOverviewProps) {
+  const { showLoading, hideLoading } = useLoading();
   const [selectedCity, setSelectedCity] = useState<string>("");
   const [municipalFilter, setMunicipalFilter] = useState<"todos" | "intimados" | "autuados" | "intimados_autuados">("todos");
-  const [travelFiscais, setTravelFiscais] = useState<string>("ROBERTO BENEVENUTO / JEFFERSON AYRES");
+  const [travelFiscais, setTravelFiscais] = useState<string>("");
   const [travelPeriod, setTravelPeriod] = useState<string>("15/05/2026 a 22/05/2026");
   const [includeClosed, setIncludeClosed] = useState<boolean>(false);
   const [dateFormat, setDateFormat] = useState<"apenas_data" | "data_hora" | "sem_data">("apenas_data");
+
+  React.useEffect(() => {
+    const inspetores = new Set<string>();
+    termos.forEach(t => {
+      if (t.inspetorFiscalizacao && t.inspetorFiscalizacao !== "null") {
+        inspetores.add(t.inspetorFiscalizacao);
+      }
+    });
+    if (inspetores.size > 0) {
+      setTravelFiscais(Array.from(inspetores).join(" / "));
+    }
+  }, [termos]);
 
   // Checks if an establishment was found closed
   const isEstabClosed = (e: Estabelecimento) => {
@@ -282,7 +296,16 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
       }
     });
 
-    return paragraphs.join("\n\n");
+    let joined = paragraphs.join("\n\n");
+    
+    const fiscalNames = travelFiscais.split(" / ");
+    fiscalNames.forEach((name, i) => {
+       const regex = new RegExp(`\\[NOME_FISCAL${i + 1}\\]`, 'g');
+       joined = joined.replace(regex, name.trim());
+    });
+    joined = joined.replace(/\[PERIODO_DE_FISCALIZAÇÃO\]/g, travelPeriod || "NÃO INFORMADO");
+
+    return joined;
   };
 
   const downloadMunicipalReport = async () => {
@@ -309,15 +332,23 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
 
     const compiledText = getCompiledEvaluationText();
 
-    await exportMunicipalDocx(`Relatorio_Municipal_${selectedCity.toUpperCase()}`, {
-      selectedCity,
-      filterLabel: filterLabels[municipalFilter],
-      filteredEstabs,
-      termos,
-      checklists,
-      customAvaliacaoGeralText: compiledText,
-      dateFormat
-    });
+    showLoading("Gerando documento...");
+    try {
+      await exportMunicipalDocx(`Relatorio_Municipal_${selectedCity.toUpperCase()}`, {
+        selectedCity,
+        filterLabel: filterLabels[municipalFilter],
+        filteredEstabs,
+        termos,
+        checklists,
+        customAvaliacaoGeralText: compiledText,
+        dateFormat
+      });
+    } catch(e) {
+      console.error(e);
+      alert("Erro ao exportar");
+    } finally {
+      hideLoading();
+    }
   };
 
   const downloadFullMunicipalReport = async () => {
@@ -343,16 +374,25 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
     };
 
     const compiledText = getCompiledEvaluationText();
-
-    await exportFullMunicipalDocx(`Relatorio_Completo_${selectedCity.toUpperCase()}`, {
-      selectedCity,
-      filterLabel: filterLabels[municipalFilter],
-      filteredEstabs,
-      termos,
-      checklists,
-      customAvaliacaoGeralText: compiledText,
-      dateFormat
-    }, travelFiscais);
+    
+    showLoading("Gerando documento, por favor aguarde...");
+    try {
+      await exportFullMunicipalDocx(`Relatorio_Completo_${selectedCity.toUpperCase()}`, {
+        selectedCity,
+        filterLabel: filterLabels[municipalFilter],
+        filteredEstabs,
+        termos,
+        checklists,
+        customAvaliacaoGeralText: compiledText,
+        dateFormat,
+        travelPeriod
+      }, travelFiscais);
+    } catch (err) {
+      console.error(err);
+      alert("Ocorreu um erro ao gerar o arquivo. Verifique o console.");
+    } finally {
+      hideLoading();
+    }
   };
 
   const downloadTravelSummary = async () => {
@@ -364,16 +404,24 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
     const countAutuados = termos.filter(t => visibleEstabelecimentos.some(e => e.inscricao === t.estabelecimentoId) && t.nrSeqAuto && t.nrSeqAuto !== "null").length;
     const countNovos = visibleEstabelecimentos.filter(e => e.isClandestina || e.inscricao.toUpperCase().includes("I")).length;
 
-    await exportTravelDocx(`Resumo_Viagem_CRFAM_${selectedCity.toUpperCase()}`, {
-      travelFiscais,
-      travelPeriod,
-      uniqueCities,
-      countFiscalizados,
-      countIntimados,
-      countAutuados,
-      countNovos,
-      citySummaries
-    });
+    showLoading("Gerando resumo de viagem...");
+    try {
+      await exportTravelDocx(`Resumo_Viagem_CRFAM_${selectedCity.toUpperCase()}`, {
+        travelFiscais,
+        travelPeriod,
+        uniqueCities,
+        countFiscalizados,
+        countIntimados,
+        countAutuados,
+        countNovos,
+        citySummaries
+      });
+    } catch(e) {
+      console.error(e);
+      alert("Erro ao exportar");
+    } finally {
+      hideLoading();
+    }
   };
 
   if (uniqueCities.length === 0) {

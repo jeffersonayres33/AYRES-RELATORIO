@@ -4,6 +4,8 @@ import { db, auth } from "../lib/firebase";
 import { Users, UserPlus, Trash2, Mail, Shield, Clock, Settings, FileText, FileSearch } from "lucide-react";
 import GeneralEvalConfig from "./GeneralEvalConfig";
 import TemplateConfig from "./TemplateConfig";
+import CustomVariables from "./CustomVariables";
+import CRFMappingConfig from "./CRFMappingConfig";
 import { useLoading } from "../contexts/LoadingContext";
 
 interface AuthorizedEmail {
@@ -19,7 +21,7 @@ export default function AdminPanel() {
   const [newEmail, setNewEmail] = useState("");
   const [newRole, setNewRole] = useState("user");
   const [error, setError] = useState<string | null>(null);
-  const [adminTab, setAdminTab] = useState<"users" | "eval" | "template">("users");
+  const [adminTab, setAdminTab] = useState<"users" | "eval" | "template" | "fiscais">("users");
 
   const { showLoading, hideLoading } = useLoading();
   const [confirmDeleteUser, setConfirmDeleteUser] = useState<string | null>(null);
@@ -129,6 +131,12 @@ export default function AdminPanel() {
              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-sm uppercase tracking-widest transition-all whitespace-nowrap ${adminTab === "template" ? "bg-violet-600 text-white shadow-md shadow-violet-600/20" : "bg-slate-50 text-slate-500 hover:bg-slate-100"}`}
            >
              <FileSearch className="w-4 h-4" /> Modelo de Relatório
+           </button>
+           <button
+             onClick={() => setAdminTab("fiscais")}
+             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-sm uppercase tracking-widest transition-all whitespace-nowrap ${adminTab === "fiscais" ? "bg-violet-600 text-white shadow-md shadow-violet-600/20" : "bg-slate-50 text-slate-500 hover:bg-slate-100"}`}
+           >
+             <Settings className="w-4 h-4" /> Mapeamento Fiscais/CRF
            </button>
         </div>
       </div>
@@ -262,8 +270,13 @@ export default function AdminPanel() {
         </div>
       ) : adminTab === "eval" ? (
         <GeneralEvalConfig />
+      ) : adminTab === "fiscais" ? (
+        <CRFMappingConfig />
       ) : (
-        <TemplateConfig />
+        <div className="space-y-6">
+          <TemplateConfig />
+          <CustomVariables />
+        </div>
       )}
     </div>
   );

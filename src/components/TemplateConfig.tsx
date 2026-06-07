@@ -13,6 +13,7 @@ export default function TemplateConfig() {
 
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [showConfirmDelete, setShowConfirmDelete] = useState(false);
   const cancelRef = useRef(false);
 
   const fetchTemplateStatus = async () => {
@@ -107,8 +108,7 @@ export default function TemplateConfig() {
   };
 
   const handleRemoveTemplate = async () => {
-    if (!confirm("Tem certeza que deseja remover o template customizado? O sistema voltará a usar o modelo padrão estruturado rigidamente.")) return;
-    
+    setShowConfirmDelete(false);
     showLoading("Removendo template...");
     try {
       const docRef = doc(db, "settings", "reportTemplate");
@@ -144,10 +144,11 @@ export default function TemplateConfig() {
 
       <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
         <ul className="text-sm font-medium text-slate-700 space-y-2 list-disc list-inside">
-          <li><code className="bg-slate-200 text-violet-700 px-1.5 py-0.5 rounded font-mono">[NOME_FISCAL]</code> - Nome do fiscal.</li>
-          <li><code className="bg-slate-200 text-violet-700 px-1.5 py-0.5 rounded font-mono">[CRF_FISCAL]</code> - Número do crf fiscal.</li>
+          <li><code className="bg-slate-200 text-violet-700 px-1.5 py-0.5 rounded font-mono">[NOME_FISCAL]</code> ou <code className="bg-slate-200 text-violet-700 px-1.5 py-0.5 rounded font-mono">[NOME_FISCAL1]</code>, <code className="bg-slate-200 text-violet-700 px-1.5 py-0.5 rounded font-mono">[NOME_FISCAL2]</code> - Nome de cada fiscal.</li>
+          <li><code className="bg-slate-200 text-violet-700 px-1.5 py-0.5 rounded font-mono">[CRF_FISCAL]</code> ou <code className="bg-slate-200 text-violet-700 px-1.5 py-0.5 rounded font-mono">[CRF_FISCAL1]</code>, <code className="bg-slate-200 text-violet-700 px-1.5 py-0.5 rounded font-mono">[CRF_FISCAL2]</code> - Número do CRF de cada fiscal (mapeado dinamicamente).</li>
           <li><code className="bg-slate-200 text-violet-700 px-1.5 py-0.5 rounded font-mono">[LOCAL_DATA_POR_EXTENSO]</code> - Ex: Manaus, 12 de março de 2024</li>
-          <li><code className="bg-slate-200 text-rose-600 px-1.5 py-0.5 rounded font-mono">[RELATORIO_SIMPLES]</code> - Substituído pelo conteúdo do relatório simples. (Recomenda-se deixar esse texto em um parágrafo isolado).</li>
+          <li><code className="bg-slate-200 text-violet-700 px-1.5 py-0.5 rounded font-mono">[DATA]</code> ou <code className="bg-slate-200 text-violet-700 px-1.5 py-0.5 rounded font-mono">[DADOS]</code> - Apenas a data (ex: 12 de março de 2024)</li>
+          <li><code className="bg-slate-200 text-rose-600 px-1.5 py-0.5 rounded font-mono">[@RELATORIO_SIMPLES]</code> - Substituído pelo conteúdo do relatório simples com formatação (Textos justificados e tópicos em negrito). É obrigatório o símbolo <b>@</b> antes do nome. (Recomenda-se deixar esse texto em um parágrafo isolado).</li>
         </ul>
       </div>
 
@@ -185,13 +186,31 @@ export default function TemplateConfig() {
               </p>
             </div>
           </div>
-          <button 
-            onClick={handleRemoveTemplate}
-            className="p-2 hover:bg-rose-100 text-rose-600 hover:text-rose-700 rounded-xl transition-all flex items-center justify-center cursor-pointer"
-            title="Remover template"
-          >
-            <Trash2 className="w-5 h-5" />
-          </button>
+          {showConfirmDelete ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-rose-600 mr-2">Tem certeza?</span>
+              <button 
+                onClick={handleRemoveTemplate}
+                className="px-3 py-1.5 bg-rose-600 text-white rounded-lg text-xs font-bold hover:bg-rose-700 transition-colors"
+              >
+                Sim, remover
+              </button>
+              <button 
+                onClick={() => setShowConfirmDelete(false)}
+                className="px-3 py-1.5 bg-slate-200 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-300 transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          ) : (
+            <button 
+              onClick={() => setShowConfirmDelete(true)}
+              className="p-2 hover:bg-rose-100 text-rose-600 hover:text-rose-700 rounded-xl transition-all flex items-center justify-center cursor-pointer"
+              title="Remover template"
+            >
+              <Trash2 className="w-5 h-5" />
+            </button>
+          )}
         </div>
       ) : (
         <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-slate-300 border-dashed rounded-2xl cursor-pointer bg-slate-50 hover:bg-slate-100 transition-all">

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { 
   Upload, 
   FileText, 
@@ -29,10 +29,10 @@ export default function Importer({ onDataImported }: ImporterProps) {
   const [dragActive, setDragActive] = useState<Record<string, boolean>>({});
   const [status, setStatus] = useState<Record<string, { success: boolean; msg: string; count: number }>>({});
   
-  const [tempEstabs, setTempEstabs] = useState<Estabelecimento[]>([]);
-  const [tempRts, setTempRts] = useState<TechnicalResponsible[]>([]);
-  const [tempTermos, setTempTermos] = useState<TermoSanitario[]>([]);
-  const [tempChecklists, setTempChecklists] = useState<FarmaciaChecklist[]>([]);
+  const tempEstabsRef = useRef<Estabelecimento[]>([]);
+  const tempRtsRef = useRef<TechnicalResponsible[]>([]);
+  const tempTermosRef = useRef<TermoSanitario[]>([]);
+  const tempChecklistsRef = useRef<FarmaciaChecklist[]>([]);
 
   // Interactive XML Live Preview node inspector
   const [inspectedXmlType, setInspectedXmlType] = useState<string | null>(null);
@@ -44,51 +44,80 @@ export default function Importer({ onDataImported }: ImporterProps) {
     setDragActive(prev => ({ ...prev, [type]: active }));
   };
 
-  const processFile = (file: File, type: "lote" | "fem_0" | "fem_20") => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const content = e.target?.result as string;
+  const processFiles = (filesList: FileList | File[], type: "lote" | "fem_0" | "fem_20") => {
+    const files = Array.from(filesList);
+    if (files.length === 0) return;
+
+    const contentPromises = files.map(file => new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => resolve(e.target?.result as string);
+      reader.onerror = reject;
+      reader.readAsText(file);
+    }));
+
+    Promise.all(contentPromises).then((contents) => {
       setInspectedXmlType(type);
-      setInspectedXmlContent(content);
+      setInspectedXmlContent(contents[0] || "");
 
       setTimeout(() => {
         try {
           if (type === "lote") {
-            const { estabelecimentos, rts } = parseLoteXML(content);
-            setTempEstabs(estabelecimentos);
-            setTempRts(rts);
-            setStatus(prev => ({
-              ...prev,
-              lote: { success: true, msg: `XML LOTE (SISCON) importado com sucesso!`, count: estabelecimentos.length }
-            }));
-            triggerIntegration(estabelecimentos, rts, tempTermos, tempChecklists);
-          } else if (type === "fem_0") {
-            const parsedTermos = parseTermos0XML(content);
-            const parsedChecklists = parseChecklistXML(content); // Checklist elements inside same _0 file
-            setTempTermos(parsedTermos);
-            setTempChecklists(parsedChecklists);
-            setStatus(prev => ({
-              ...prev,
-              fem_0: { success: true, msg: `XML xxxx_0 (Termos e Autos) importado com sucesso!`, count: parsedTermos.length + parsedChecklists.length }
-            }));
-            triggerIntegration(tempEstabs, tempRts, parsedTermos, parsedChecklists);
-          } else if (type === "fem_20") {
-            const parsedNovos = parseNovosCadastros20XML(content);
+            let es: Estabelecimento[] = [];
+            let rs: TechnicalResponsible[] = [];
+            contents.forEach(content => {
+              const parsed = parseLoteXML(content);
+              es = es.concat(parsed.estabelecimentos);
+              rs = rs.concat(parsed.rts);
+            });
+            tempEstabsRef.current = [...tempEstabsRef.current, ...es];
+            tempRtsRef.current = [...tempRtsRef.current, ...rs];
             
-            // Append new field-added establishments to total list
-            const mergedEstabs = [...tempEstabs];
-            parsedNovos.forEach(nov => {
+            setStatus(prev => ({
+              ...prev,
+              lote: { success: true, msg: `XML LOTE importado (${files.length} arq)`, count: tempEstabsRef.current.length }
+            }));
+            triggerIntegration();
+          } else if (type === "fem_0") {
+            let ts: TermoSanitario[] = [];
+            let cs: FarmaciaChecklist[] = [];
+            contents.forEach(content => {
+              ts = ts.concat(parseTermos0XML(content));
+              cs = cs.concat(parseChecklistXML(content));
+            });
+            tempTermosRef.current = [...tempTermosRef.current, ...ts];
+            tempChecklistsRef.current = [...tempChecklistsRef.current, ...cs];
+            
+            setStatus(prev => ({
+              ...prev,
+              fem_0: { success: true, msg: `XML xxxx_0 importado (${files.length} arq)`, count: tempTermosRef.current.length + tempChecklistsRef.current.length }
+            }));
+            triggerIntegration();
+          } else if (type === "fem_20") {
+            let novEs: Estabelecimento[] = [];
+            contents.forEach(content => {
+              novEs = novEs.concat(parseNovosCadastros20XML(content));
+            });
+            const mergedEstabs = [...tempEstabsRef.current];
+            novEs.forEach(nov => {
               if (!mergedEstabs.some(x => x.inscricao === nov.inscricao)) {
                 mergedEstabs.push(nov);
               }
             });
+            tempEstabsRef.current = mergedEstabs;
             
-            setTempEstabs(mergedEstabs);
-            setStatus(prev => ({
-              ...prev,
-              fem_20: { success: true, msg: `XML xxxx_20 (Empresas Novas) importado!`, count: parsedNovos.length }
-            }));
-            triggerIntegration(mergedEstabs, tempRts, tempTermos, tempChecklists);
+            // For count info, we keep track of total added by fem_20 via state
+            setStatus(prev => {
+              const currentCount = prev.fem_20?.count || 0;
+              return {
+                ...prev,
+                fem_20: { 
+                  success: true, 
+                  msg: prev.fem_20 ? `XML xxxx_20 importado (+${files.length} arq)` : `XML xxxx_20 importado (${files.length} arq)`, 
+                  count: currentCount + novEs.length 
+                }
+              };
+            });
+            triggerIntegration();
           }
         } catch (err) {
           setStatus(prev => ({
@@ -96,30 +125,30 @@ export default function Importer({ onDataImported }: ImporterProps) {
             [type]: { success: false, msg: `Erro ao analisar XML: arquivo corrompido ou incompatível`, count: 0 }
           }));
         }
-      }, 100); // Slight delay for the spinner to render
-    };
-    reader.readAsText(file);
+      }, 100);
+    }).catch(err => {
+      console.error("Error reading files", err);
+    });
   };
 
   const handleDrop = (e: React.DragEvent, type: "lote" | "fem_0" | "fem_20") => {
     handleDrag(e, type, false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      processFile(e.dataTransfer.files[0], type);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      processFiles(e.dataTransfer.files, type);
     }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: "lote" | "fem_0" | "fem_20") => {
-    if (e.target.files && e.target.files[0]) {
-      processFile(e.target.files[0], type);
+    if (e.target.files && e.target.files.length > 0) {
+      processFiles(e.target.files, type);
     }
   };
 
-  const triggerIntegration = (
-    es: Estabelecimento[],
-    rs: TechnicalResponsible[],
-    ts: TermoSanitario[],
-    cs: FarmaciaChecklist[]
-  ) => {
+  const triggerIntegration = () => {
+    const es = tempEstabsRef.current;
+    const rs = tempRtsRef.current;
+    const ts = tempTermosRef.current;
+    const cs = tempChecklistsRef.current;
     if (es.length > 0 || ts.length > 0 || cs.length > 0) {
       onDataImported({
         estabelecimentos: es,
@@ -350,6 +379,7 @@ export default function Importer({ onDataImported }: ImporterProps) {
                   id={`file-${target.id}`}
                   type="file"
                   accept=".xml"
+                  multiple
                   className="hidden"
                   onChange={(e) => handleFileChange(e, target.id)}
                 />

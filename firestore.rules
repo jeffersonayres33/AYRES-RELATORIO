@@ -52,5 +52,13 @@ service cloud.firestore {
       allow read: if isAuthorizedUser();
       allow write: if isAdmin();
     }
+    match /settings/{document=**} {
+      allow read: if isAuthorizedUser();
+      allow write: if isAdmin();
+    }
+    match /templateVariables/{variableId} {
+      allow read: if isAuthorizedUser();
+      allow write: if isAdmin();
+    }
   }
 }

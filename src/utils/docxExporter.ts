@@ -55,6 +55,7 @@ interface ExportMunicipalProps {
   checklists: FarmaciaChecklist[];
   customAvaliacaoGeralText?: string;
   dateFormat?: 'apenas_data' | 'data_hora' | 'sem_data';
+  travelPeriod?: string;
 }
 
 export const generateMunicipalReportChildren = (
@@ -321,7 +322,7 @@ export const exportMunicipalDocx = async (
 import { saveAs } from "file-saver";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, collection, getDocs } from "firebase/firestore";
 import { db } from "../lib/firebase";
 
 export const exportFullMunicipalDocx = async (
@@ -329,9 +330,11 @@ export const exportFullMunicipalDocx = async (
   options: ExportMunicipalProps,
   travelFiscais: string
 ) => {
-  const { selectedCity, filterLabel, filteredEstabs, termos, checklists, customAvaliacaoGeralText, dateFormat = 'apenas_data' } = options;
+  const { selectedCity, filterLabel, filteredEstabs, termos, checklists, customAvaliacaoGeralText, travelPeriod, dateFormat = 'apenas_data' } = options;
 
   let templateBase64 = null;
+  let customTemplateVariables: Record<string, string> = {};
+  
   try {
     const docRef = doc(db, "settings", "reportTemplate");
     const snap = await getDoc(docRef);
@@ -355,65 +358,232 @@ export const exportFullMunicipalDocx = async (
     console.error("Erro ao buscar template no Firebase", e);
   }
 
+  // Fetch custom variables if we have a template
+  if (templateBase64) {
+    try {
+      const varsSnap = await getDocs(collection(db, "templateVariables"));
+      varsSnap.forEach(v => {
+        const data = v.data();
+        if (data.name && data.value) {
+          customTemplateVariables[data.name] = data.value;
+        }
+      });
+    } catch (e) {
+      console.error("Erro ao carregar variaveis customizadas", e);
+    }
+  }
+
+  // Fetch CRF Mappings
+  const crfMappings: {namePart: string; crfValue: string}[] = [];
+  try {
+    const mappingsSnap = await getDocs(collection(db, "fiscal_crf_mappings"));
+    mappingsSnap.forEach(d => {
+      const data = d.data();
+      if (data.namePart && data.crfValue) {
+        crfMappings.push({ namePart: data.namePart, crfValue: data.crfValue });
+      }
+    });
+  } catch (e) {
+    console.error("Erro ao carregar mapeamentos de CRF", e);
+  }
+
+  const getCrfForName = (name: string) => {
+    const upperName = name.toUpperCase();
+    for (const m of crfMappings) {
+      if (upperName.includes(m.namePart)) {
+        return m.crfValue;
+      }
+    }
+    // Hardcoded defaults as requested
+    if (upperName.includes("JEFFERSON")) return "CRF/AM 05566";
+    if (upperName.includes("RAFAELLA")) return "CRF/AM 01683";
+    if (upperName.includes("DAIANE")) return "CRF/AM 04510";
+    if (upperName.includes("GLAUCIANE")) return "CRF/AM 04732";
+    
+    return "NÃO INFORMADO";
+  };
+
   // Extract variables
   const nomeFiscalStr = travelFiscais || "CRF/AM (Fiscais)";
-  const crfFiscalStr = ""; // We can extract it if needed, or leave empty
+  const fiscalNames = nomeFiscalStr.split(" / ");
+  const crfFiscalStr = fiscalNames.map(f => getCrfForName(f.trim())).join(" / ");
   const dateFormatted = new Date().toLocaleDateString('pt-BR', { year: 'numeric', month: 'long', day: 'numeric' });
   const localDataStr = `${selectedCity}, ${dateFormatted}`;
 
-  // Build the simple report as a plain text string instead of Paragraph elements for docxtemplater
-  let relatorioSimplesText = "";
-  
-  if (filteredEstabs.length === 0) {
-    relatorioSimplesText = `Nenhum estabelecimento encontrado com este filtro: ${filterLabel}`;
-  } else {
-    filteredEstabs.forEach((estab, idx) => {
-      relatorioSimplesText += `${idx + 1}. ${estab.razaoSocial}\n`;
-      relatorioSimplesText += `CNPJ: ${estab.cnpj}   -   Inscrição CRF: ${estab.inscricao}\n`;
-      if (estab.proprietario) relatorioSimplesText += `Proprietário: ${estab.proprietario}\n`;
-      if (estab.nomeFantasia && estab.nomeFantasia !== estab.razaoSocial) relatorioSimplesText += `Nome de Fantasia: ${estab.nomeFantasia}\n`;
+  // Process custom template dynamic tags replacement
 
-      let hasIssues = false;
-      
-      const t = termos.find(term => term.estabelecimentoId === estab.inscricao);
-      
-      if (t) {
-        if (t.nrSeqFormulario && t.nrSeqFormulario !== "null") {
-          relatorioSimplesText += `Formulário: ${t.nrSeqFormulario}\n`;
-          hasIssues = true;
-        }
-        if (t.nrSeqIntimacao && t.nrSeqIntimacao !== "null") {
-          relatorioSimplesText += `Intimação: ${t.nrSeqIntimacao}\n`;
-          hasIssues = true;
-        }
-        if (t.nrSeqAuto && t.nrSeqAuto !== "null") {
-          relatorioSimplesText += `Autuação: ${t.nrSeqAuto}\n`;
-          hasIssues = true;
-        }
-      }
-      
-      const checklist = checklists.find(c => c.estabelecimentoId === estab.inscricao);
-      if (checklist) {
-        const trueFaltas = Object.entries(checklist.items || {}).filter(([_, val]) => val === true).map(([key]) => key);
-        if (trueFaltas.length > 0) {
-          hasIssues = true;
-          relatorioSimplesText += `Irregularidades / Observações:\n`;
-          trueFaltas.forEach(falta => {
-            relatorioSimplesText += `  - ${falta}\n`;
-          });
-        }
-      }
+  Object.keys(customTemplateVariables).forEach(key => {
+    let text = customTemplateVariables[key];
+    if (text) {
+      text = text.replace(/<cidade>/gi, selectedCity || "")
+                 .replace(/<municipio>/gi, selectedCity || "")
+                 .replace(/\[CIDADE\]/gi, selectedCity || "")
+                 .replace(/<fiscal>/gi, nomeFiscalStr)
+                 .replace(/<inspetor>/gi, nomeFiscalStr)
+                 .replace(/<data>/gi, dateFormatted)
+                 .replace(/\[DATA\]/gi, dateFormatted)
+                 .replace(/<dados>/gi, dateFormatted)
+                 .replace(/\[DADOS\]/gi, dateFormatted)
+                 .replace(/\[PERIODO_DE_FISCALIZAÇÃO\]/gi, travelPeriod || "NÃO INFORMADO");
 
-      if (!hasIssues) {
-        relatorioSimplesText += `Status: Sem pendências registradas.\n`;
-      }
-      
-      relatorioSimplesText += `\n------------------------------------------------------------\n\n`;
-    });
-    
-    if (customAvaliacaoGeralText) {
-      relatorioSimplesText += `AVALIAÇÃO GERAL:\n${customAvaliacaoGeralText}\n`;
+      fiscalNames.forEach((name, i) => {
+         const regexName = new RegExp(`\\[NOME_FISCAL${i + 1}\\]`, 'gi');
+         const regexCrf = new RegExp(`\\[CRF_FISCAL${i + 1}\\]`, 'gi');
+         text = text.replace(regexName, name.trim());
+         text = text.replace(regexCrf, getCrfForName(name.trim()));
+      });
+
+      customTemplateVariables[key] = text;
     }
+  });
+
+  // WordprocessingML helpers for docxtemplater raw XML
+  const escapeXml = (unsafe: string) => unsafe.replace(/[<>&'"]/g, c => {
+      switch (c) {
+          case '<': return '&lt;';
+          case '>': return '&gt;';
+          case '&': return '&amp;';
+          case '\'': return '&apos;';
+          case '"': return '&quot;';
+          default: return c;
+      }
+  });
+
+  const rPrContent = `<w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman"/><w:sz w:val="24"/><w:szCs w:val="24"/>`;
+  const pStyle = `<w:pPr><w:jc w:val="both"/><w:spacing w:before="100" w:after="100"/></w:pPr>`;
+  const p = (inner: string) => `<w:p>${pStyle}${inner}</w:p>`;
+  const pBold = (inner: string) => `<w:p><w:pPr><w:jc w:val="both"/><w:spacing w:before="200" w:after="100"/></w:pPr><w:r><w:rPr>${rPrContent}<w:b/></w:rPr><w:t xml:space="preserve">${escapeXml(inner)}</w:t></w:r></w:p>`;
+  const r = (text: string, bold = false) => `<w:r><w:rPr>${rPrContent}${bold ? `<w:b/>` : ''}</w:rPr><w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r>`;
+
+  let relatorioSimplesText = ""; // Plain text fallback
+  let relatorioSimplesXml = ""; // Rich text for custom template
+  
+  const defaultAssessmentFallback = `Como é sabido, é de competência do Conselho Regional de Farmácia a fiscalização do exercício da profissão farmacêutica no Estado do Amazonas, visando resguardar o cumprimento da legislação vigente e, indiretamente, atuar na promoção da saúde em todo Estado.\n\nNo Município de ${selectedCity.toUpperCase()} foram realizadas ${filteredEstabs.length} inspeções em estabelecimentos privados e unidades públicas, sem aplicação de auto de infração.`;
+  let assessmentText = customAvaliacaoGeralText || defaultAssessmentFallback;
+
+  fiscalNames.forEach((name, i) => {
+    const regexName = new RegExp(`\\[NOME_FISCAL${i + 1}\\]`, 'gi');
+    const regexCrf = new RegExp(`\\[CRF_FISCAL${i + 1}\\]`, 'gi');
+    assessmentText = assessmentText.replace(regexName, name.trim());
+    assessmentText = assessmentText.replace(regexCrf, getCrfForName(name.trim()));
+  });
+
+  relatorioSimplesXml += pBold("3. DA AVALIAÇÃO GERAL");
+  assessmentText.split(/\r?\n/).forEach(par => {
+    if (par.trim() !== '') relatorioSimplesXml += p(r(par));
+  });
+
+  relatorioSimplesXml += pBold("3.1 DA AVALIAÇÃO ESPECÍFICA DE CADA ESTABELECIMENTO");
+  relatorioSimplesXml += p(r("Em virtude do risco sanitário e das irregularidades identificadas perante o CRF/AM, será realizada uma análise individualizada de alguns estabelecimentos afetados. Essa medida visa fornecer informações detalhadas aos órgãos competentes, garantindo que as devidas providências sejam tomadas para assegurar a conformidade e a segurança na prestação de serviços farmacêuticos."));
+
+  if (filteredEstabs.length === 0) {
+    relatorioSimplesXml += p(r(`Nenhum estabelecimento encontrado com este filtro: ${filterLabel}`));
+  } else {
+    filteredEstabs.forEach((e, index) => {
+      const t = termos.find(term => term.estabelecimentoId === e.inscricao);
+
+      const getValueOrFallback = (val: string | undefined, fallback = "NÃO INFORMADO"): string => {
+        if (!val || val.trim() === "" || val === "null" || val === "N/A" || val === "UNDEFINED") {
+          return fallback;
+        }
+        return val.trim();
+      };
+
+      const rtLabel = t?.nomeRtPresente && t.nomeRtPresente !== "null" ? t.nomeRtPresente : "";
+      const termoInspeção = getValueOrFallback(t?.nrSeqTermo, "NÃO EMITIDO");
+      
+      let crfAm = "NÃO INFORMADO";
+      if (t?.nomeRtPresente && t.nomeRtPresente !== "null") {
+        const match = t.nomeRtPresente.match(/CRF\/?\s*(?:AM)?\s*([0-9\-\/A-Z]+)/i);
+        if (match) {
+          crfAm = match[1];
+        }
+      }
+
+      let cleanPharmaName = "NÃO INFORMADO";
+      if (rtLabel && rtLabel.trim() !== "") {
+        let tempName = rtLabel;
+        if (tempName.toUpperCase().includes("CRF")) {
+          const idx = tempName.toUpperCase().indexOf("CRF");
+          tempName = tempName.substring(0, idx).trim();
+        }
+        tempName = tempName.replace(/,\s*$/, "").trim();
+        cleanPharmaName = tempName || "NÃO INFORMADO";
+      }
+
+      const dataFull = t?.dtInicio && t.dtInicio !== "null" ? t.dtInicio : "NÃO INFORMADO";
+      let dataFinal = dataFull;
+      if (dateFormat === "apenas_data" && dataFull !== "NÃO INFORMADO") {
+        dataFinal = dataFull.split(" ")[0];
+      } else if (dateFormat === "sem_data") {
+        dataFinal = "";
+      }
+      
+      const ipPor = getValueOrFallback(t?.informacoesPrestadasPor);
+      const cargo = getValueOrFallback(t?.cargoFuncao);
+      const rgVal = getValueOrFallback(t?.ifpRg);
+      const cpfVal = getValueOrFallback(t?.ifpCpf);
+      const loteVal = getValueOrFallback(t?.lote);
+
+      relatorioSimplesXml += p(r("Nome Fantasia: ", true) + r(getValueOrFallback(e.fantasia).toUpperCase()));
+      relatorioSimplesXml += p(r("Razão Social: ", true) + r(getValueOrFallback(e.razaoSocial).toUpperCase()));
+      relatorioSimplesXml += p(r("CNPJ: ", true) + r(getValueOrFallback(e.cnpj)));
+      relatorioSimplesXml += p(r("Inscrição: ", true) + r(getValueOrFallback(e.inscricao)));
+      relatorioSimplesXml += p(r("Endereço: ", true) + r(getValueOrFallback(e.endereco).toUpperCase()));
+      relatorioSimplesXml += p(r("Bairro: ", true) + r(getValueOrFallback(e.bairro).toUpperCase()));
+      relatorioSimplesXml += p(r("Município: ", true) + r(getValueOrFallback(e.cidade).toUpperCase()));
+      relatorioSimplesXml += p(r("Termo de Inspeção: ", true) + r(termoInspeção));
+      
+      if (t?.nrSeqIntimacao && t.nrSeqIntimacao !== "null" && t.nrSeqIntimacao.trim() !== "") {
+        relatorioSimplesXml += p(r("Termo de Intimação: ", true) + r(t.nrSeqIntimacao));
+      }
+      
+      if (t?.nrSeqAuto && t.nrSeqAuto !== "null" && t.nrSeqAuto.trim() !== "") {
+        relatorioSimplesXml += p(r("Auto de Infração: ", true) + r(t.nrSeqAuto));
+      }
+      
+      if (dataFinal !== "") {
+        relatorioSimplesXml += p(r("Data: ", true) + r(dataFinal));
+      }
+      
+      relatorioSimplesXml += p(r("Lote: ", true) + r(loteVal));
+      relatorioSimplesXml += p(r("Farmacêutico (a): ", true) + r(cleanPharmaName.toUpperCase()));
+      relatorioSimplesXml += p(r("CRF AM: ", true) + r(getValueOrFallback(t?.inscricaoRtPresente)));
+      relatorioSimplesXml += p(r("Responsável Técnico: ", true) + r(getValueOrFallback(t?.nomeRtPresente).toUpperCase()));
+      relatorioSimplesXml += p(r("Inf. Prestadas Por: ", true) + r(ipPor.toUpperCase()));
+      relatorioSimplesXml += p(r("Cargo: ", true) + r(cargo.toUpperCase()));
+      relatorioSimplesXml += p(r("RG: ", true) + r(rgVal.toUpperCase()));
+      relatorioSimplesXml += p(r("CPF: ", true) + r(cpfVal.toUpperCase()));
+
+      // Observações (Organized and formatted from t.obs XML field)
+      if (t?.obs && t.obs !== "null") {
+        relatorioSimplesXml += `<w:p><w:pPr><w:spacing w:before="100" w:after="100"/></w:pPr></w:p>`; // empty line
+        const obsLines = t.obs.split(/\r?\n/);
+        obsLines.forEach((line) => {
+          const trimmed = line.trim();
+          if (trimmed !== "") {
+            const upper = trimmed.toUpperCase();
+            const isMainTitle = upper.includes("REGULARIDADE PERANTE") || 
+                                upper.includes("ASPECTOS TÉCNICOS OBSERVADOS") ||
+                                upper.includes("OBSERVAÇÕES TÉCNICAS") || 
+                                /^[0-9]+[.)]\s+/.test(trimmed) ||
+                                upper.startsWith("OBSERVAÇÃO") ||
+                                trimmed.startsWith("#REGULAR") ||
+                                trimmed.startsWith("#IRREGULAR") ||
+                                (trimmed.length > 3 && upper === trimmed && !trimmed.includes(",") && trimmed.split(" ").length < 10);
+
+            if (isMainTitle) {
+              relatorioSimplesXml += pBold(trimmed);
+            } else {
+              relatorioSimplesXml += p(r(trimmed));
+            }
+          }
+        });
+      }
+
+      // Add separator
+      relatorioSimplesXml += `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="200" w:after="200"/></w:pPr><w:r><w:t>------------------------------------------------------------------------------------------------------------------------</w:t></w:r></w:p>`;
+    });
   }
 
   // If no template in DB, use the fallback basic docx generation
@@ -477,13 +647,28 @@ export const exportFullMunicipalDocx = async (
         delimiters: { start: "[", end: "]" }
     });
 
-    // docxtemplater will now replace tags inside [ ]
-    doc.render({
+    const fiscalNames = nomeFiscalStr.split(" / ");
+    
+    const renderData: any = {
         NOME_FISCAL: nomeFiscalStr,
         CRF_FISCAL: crfFiscalStr,
         LOCAL_DATA_POR_EXTENSO: localDataStr,
-        RELATORIO_SIMPLES: relatorioSimplesText
+        DATA: dateFormatted,
+        DADOS: dateFormatted,
+        CIDADE: selectedCity || "",
+        MUNICIPIO: selectedCity || "",
+        PERIODO_DE_FISCALIZAÇÃO: travelPeriod || "NÃO INFORMADO",
+        ...customTemplateVariables,
+        RELATORIO_SIMPLES: relatorioSimplesXml
+    };
+    
+    fiscalNames.forEach((name, i) => {
+        renderData[`NOME_FISCAL${i + 1}`] = name.trim();
+        renderData[`CRF_FISCAL${i + 1}`] = getCrfForName(name.trim());
     });
+
+    // docxtemplater will now replace tags inside [ ]
+    doc.render(renderData);
 
     const out = doc.getZip().generate({
         type: "blob",
