@@ -1,4 +1,4 @@
-import { Estabelecimento, TechnicalResponsible, TermoSanitario, FarmaciaChecklist } from "../types";
+import { Estabelecimento, TechnicalResponsible, TermoSanitario } from "../types";
 
 /**
  * Utility to parse Delphi-compatible XML documents using standard DOMParser.
@@ -158,70 +158,4 @@ export const parseFemXML = (xmlContent: string): TermoSanitario[] => {
   return termos;
 };
 
-export const parseChecklistXML = (xmlContent: string): FarmaciaChecklist[] => {
-  const parser = new DOMParser();
-  const xmlDoc = parser.parseFromString(xmlContent, "application/xml");
-  const checklists: FarmaciaChecklist[] = [];
 
-  let items = Array.from(xmlDoc.getElementsByTagName("Item"));
-  if (items.length === 0 && xmlDoc.documentElement) {
-    items = Array.from(xmlDoc.documentElement.children);
-  }
-
-  const catList = [
-    { key: "A", name: "Com rasuras e/ou adulterações" },
-    { key: "B", name: "Sem data de prescrição" },
-    { key: "C", name: "Aviadas fora do prazo legal" },
-    { key: "D", name: "Sem identificação correta do emitente" },
-    { key: "E", name: "Sem identificação correta do comprador" },
-    { key: "F", name: "Sem identificação correta do fornecedor" },
-    { key: "G", name: "Aviadas em quantidade acima do limite" },
-    { key: "H", name: "Aviadas acima de concentração farmacológica" },
-    { key: "I", name: "Sem a rubrica do farmacêutico" },
-    { key: "J", name: "Provenientes de outra unidade federativa" },
-    { key: "K", name: "Sem número de lote anotado" },
-    { key: "L", name: "Prescrição em nome comercial" }
-  ];
-
-  items.forEach((item) => {
-    const estabId = getTagText(item, "Estabelecimento");
-    if (estabId && estabId !== "null") {
-      const respostas: Record<string, "S" | "N"> = {};
-      for (let q = 1; q <= 26; q++) {
-        const qStr = q.toString().padStart(2, "0");
-        const val = getTagText(item, `FdaV1Cep${qStr}`, "N");
-        respostas[qStr] = val === "S" ? "S" : "N";
-      }
-
-      const irregularidades: Record<string, { categoria: string; receita: number; notificacao: number; antimicrobiano: number }> = {};
-      catList.forEach((cat) => {
-        irregularidades[cat.key.toLowerCase()] = {
-          categoria: cat.name,
-          receita: getTagNumber(item, `FdaV1Rec${cat.key}Receita`),
-          notificacao: getTagNumber(item, `FdaV1Rec${cat.key}Notificacao`),
-          antimicrobiano: getTagNumber(item, `FdaV1Rec${cat.key}Antimicrobianos`)
-        };
-      });
-
-      checklists.push({
-        estabelecimentoId: estabId,
-        termo: getTagText(item, "Termo"),
-        nomeRt: getTagText(item, "NomeRt"),
-        inscricaoRt: getTagText(item, "InscricaoRt"),
-        numFicha: getTagText(item, "NumFicha"),
-        dtInicio: getTagText(item, "DtInicio"),
-        dtFim: getTagText(item, "DtFim"),
-        data: getTagText(item, "Data"),
-        arquivarFVPE: getTagText(item, "ArquivarFVPE", "S"),
-        outros: getTagText(item, "Outros"),
-        respostas,
-        totalAnaliseReceita: getTagNumber(item, "FTotalAnaliseReceita"),
-        totalAnaliseNotificacao: getTagNumber(item, "FTotalAnaliseNotificacao"),
-        totalAnaliseAntimicrobiano: getTagNumber(item, "FTotalAnaliseAntimicrobianos"),
-        irregularidades
-      });
-    }
-  });
-
-  return checklists;
-};

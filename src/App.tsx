@@ -17,13 +17,12 @@ import {
   Settings,
   Database
 } from "lucide-react";
-import { Estabelecimento, TechnicalResponsible, TermoSanitario, FarmaciaChecklist } from "./types";
+import { Estabelecimento, TechnicalResponsible, TermoSanitario } from "./types";
 import { motion, AnimatePresence } from "motion/react";
 
 // Components
 import Dashboard from "./components/Dashboard";
 import Importer from "./components/Importer";
-import ChecklistCheck from "./components/ChecklistCheck";
 import TripOverview from "./components/TripOverview";
 import AdminPanel from "./components/AdminPanel";
 import { auth } from "./lib/firebase";
@@ -37,7 +36,6 @@ export default function App() {
   const [estabelecimentos, setEstabelecimentos] = useState<Estabelecimento[]>([]);
   const [rts, setRts] = useState<TechnicalResponsible[]>([]);
   const [termos, setTermos] = useState<TermoSanitario[]>([]);
-  const [checklists, setChecklists] = useState<FarmaciaChecklist[]>([]);
 
   // Simulated Loading state
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -73,54 +71,41 @@ export default function App() {
     estabelecimentos: Estabelecimento[];
     rts: TechnicalResponsible[];
     termos: TermoSanitario[];
-    checklists: FarmaciaChecklist[];
   }) => {
     simulateLoading("Importando e Cruzando Dados XML...", () => {
       if (data.estabelecimentos.length > 0) {
         setEstabelecimentos(prev => {
-          const merged = [...prev];
+          const map = new Map(prev.map(item => [item.inscricao, item]));
           data.estabelecimentos.forEach(e => {
-            if (!merged.some(x => x.inscricao === e.inscricao)) {
-              merged.push(e);
+            if (!map.has(e.inscricao)) {
+              map.set(e.inscricao, e);
             }
           });
-          return merged;
+          return Array.from(map.values());
         });
       }
 
       if (data.rts.length > 0) {
         setRts(prev => {
-          const merged = [...prev];
+          const map = new Map(prev.map(item => [`${item.estabelecimentoId}_${item.crf}`, item]));
           data.rts.forEach(r => {
-            if (!merged.some(x => x.estabelecimentoId === r.estabelecimentoId && x.crf === r.crf)) {
-              merged.push(r);
+            if (!map.has(`${r.estabelecimentoId}_${r.crf}`)) {
+              map.set(`${r.estabelecimentoId}_${r.crf}`, r);
             }
           });
-          return merged;
+          return Array.from(map.values());
         });
       }
 
       if (data.termos.length > 0) {
         setTermos(prev => {
-          const merged = [...prev];
+          const map = new Map(prev.map(item => [`${item.estabelecimentoId}_${item.dtInicio}`, item]));
           data.termos.forEach(t => {
-            if (!merged.some(x => x.estabelecimentoId === t.estabelecimentoId && x.dtInicio === t.dtInicio)) {
-              merged.push(t);
+            if (!map.has(`${t.estabelecimentoId}_${t.dtInicio}`)) {
+              map.set(`${t.estabelecimentoId}_${t.dtInicio}`, t);
             }
           });
-          return merged;
-        });
-      }
-
-      if (data.checklists.length > 0) {
-        setChecklists(prev => {
-          const merged = [...prev];
-          data.checklists.forEach(c => {
-            if (!merged.some(x => x.estabelecimentoId === c.estabelecimentoId && x.numFicha === c.numFicha)) {
-              merged.push(c);
-            }
-          });
-          return merged;
+          return Array.from(map.values());
         });
       }
     });
@@ -130,7 +115,6 @@ export default function App() {
     setEstabelecimentos([]);
     setRts([]);
     setTermos([]);
-    setChecklists([]);
     setTargetedInscricao("");
     setActiveTab("importacao");
   };
@@ -329,7 +313,6 @@ export default function App() {
                 <Dashboard
                   estabelecimentos={estabelecimentos}
                   termos={termos}
-                  checklists={checklists}
                   onNavigateToTab={(tab) => {
                     if (!hasData && tab !== "importacao") return; // guard navigation
                     setActiveTab(tab);
@@ -348,7 +331,6 @@ export default function App() {
                 <TripOverview
                   estabelecimentos={estabelecimentos}
                   termos={termos}
-                  checklists={checklists}
                 />
               )}
 

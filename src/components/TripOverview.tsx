@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../lib/firebase";
-import { Estabelecimento, TermoSanitario, FarmaciaChecklist, EvalItem, EvalVariable } from "../types";
+import { Estabelecimento, TermoSanitario, EvalItem, EvalVariable } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import { exportMunicipalDocx, exportTravelDocx, exportFullMunicipalDocx } from "../utils/docxExporter";
 import { useLoading } from "../contexts/LoadingContext";
@@ -32,10 +32,9 @@ import { useLoading } from "../contexts/LoadingContext";
 interface TripOverviewProps {
   estabelecimentos: Estabelecimento[];
   termos: TermoSanitario[];
-  checklists: FarmaciaChecklist[];
 }
 
-export default function TripOverview({ estabelecimentos, termos, checklists }: TripOverviewProps) {
+export default function TripOverview({ estabelecimentos, termos }: TripOverviewProps) {
   const { showLoading, hideLoading } = useLoading();
   const [selectedCity, setSelectedCity] = useState<string>("");
   const [municipalFilter, setMunicipalFilter] = useState<"todos" | "intimados" | "autuados" | "intimados_autuados">("todos");
@@ -57,17 +56,19 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
   }, [termos]);
 
   // Checks if an establishment was found closed
-  const isEstabClosed = (e: Estabelecimento) => {
+  const isEstabClosed = React.useCallback((e: Estabelecimento) => {
     if (e.encontrava && e.encontrava.toUpperCase() === "FECHADA") return true;
     const t = termos.find(term => term.estabelecimentoId === e.inscricao);
     if (t?.encontrava && t.encontrava.toUpperCase() === "FECHADA") return true;
     return false;
-  };
+  }, [termos]);
 
-  const visibleEstabelecimentos = estabelecimentos.filter(e => {
-    if (includeClosed) return true;
-    return !isEstabClosed(e);
-  });
+  const visibleEstabelecimentos = React.useMemo(() => {
+    return estabelecimentos.filter(e => {
+      if (includeClosed) return true;
+      return !isEstabClosed(e);
+    });
+  }, [estabelecimentos, includeClosed, isEstabClosed]);
 
   // 3. DA AVALIAÇÃO GERAL Modal & Toggles State
   const [isEvalModalOpen, setIsEvalModalOpen] = useState(false);
@@ -220,7 +221,9 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
   };
 
   // Calculate unique list of cities present in establishing records
-  const uniqueCities = Array.from(new Set(visibleEstabelecimentos.map(e => e.cidade.toUpperCase()))).sort();
+  const uniqueCities = React.useMemo(() => {
+    return Array.from(new Set<string>(visibleEstabelecimentos.map(e => e.cidade.toUpperCase()))).sort();
+  }, [visibleEstabelecimentos]);
 
   React.useEffect(() => {
     if (uniqueCities.length > 0 && !selectedCity) {
@@ -229,7 +232,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
   }, [uniqueCities, selectedCity]);
 
   // Aggregate stats per city
-  const citySummaries = uniqueCities.map(city => {
+  const citySummaries = React.useMemo(() => uniqueCities.map(city => {
     const cityEstabs = visibleEstabelecimentos.filter(e => e.cidade.toUpperCase() === city);
     const estabIds = cityEstabs.map(e => e.inscricao);
     const cityTermos = termos.filter(t => estabIds.includes(t.estabelecimentoId));
@@ -247,7 +250,7 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
       novos,
       estabelecimentos: cityEstabs
     };
-  });
+  }), [uniqueCities, visibleEstabelecimentos, termos]);
 
   const activeSum = citySummaries.find(s => s.cidade === selectedCity);
   const cityEstabs = activeSum ? activeSum.estabelecimentos : [];
@@ -339,7 +342,6 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
         filterLabel: filterLabels[municipalFilter],
         filteredEstabs,
         termos,
-        checklists,
         customAvaliacaoGeralText: compiledText,
         dateFormat
       });
@@ -382,7 +384,6 @@ export default function TripOverview({ estabelecimentos, termos, checklists }: T
         filterLabel: filterLabels[municipalFilter],
         filteredEstabs,
         termos,
-        checklists,
         customAvaliacaoGeralText: compiledText,
         dateFormat,
         travelPeriod

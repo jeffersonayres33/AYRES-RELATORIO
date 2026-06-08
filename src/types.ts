@@ -50,41 +50,6 @@ export interface TermoSanitario {
   encontrava?: string;
 }
 
-export interface ChecklistQuestao {
-  id: string; // "01" a "25"
-  textoSim: string;
-  textoNao: string;
-}
-
-export interface FarmaciaChecklist {
-  estabelecimentoId: string;
-  termo: string;
-  nomeRt: string;
-  inscricaoRt: string;
-  numFicha: string;
-  dtInicio: string;
-  dtFim: string;
-  data: string;
-  arquivarFVPE: string;
-  outros: string;
-  
-  // Checklist boolean flags (S / N)
-  respostas: Record<string, "S" | "N">; // keys like "01" to "25"
-  
-  // Prescription audit totals
-  totalAnaliseReceita: number;
-  totalAnaliseNotificacao: number;
-  totalAnaliseAntimicrobiano: number;
-  
-  // Specific irregularities (a to l)
-  irregularidades: Record<string, {
-    categoria: string; // e.g. "Com rasuras e/ou adulterações"
-    receita: number;
-    notificacao: number;
-    antimicrobiano: number;
-  }>;
-}
-
 export interface PhotographicEvidence {
   id: string;
   name: string;
@@ -96,7 +61,6 @@ export interface PhotographicEvidence {
 export interface IntegratedInspection {
   estabelecimento: Estabelecimento;
   termo?: TermoSanitario;
-  checklist?: FarmaciaChecklist;
   photos: PhotographicEvidence[];
 }
 

@@ -12,8 +12,8 @@ import {
   Trash2,
   ListFilter
 } from "lucide-react";
-import { parseLoteXML, parseTermos0XML, parseChecklistXML, parseNovosCadastros20XML } from "../utils/xmlParser";
-import { Estabelecimento, TechnicalResponsible, TermoSanitario, FarmaciaChecklist } from "../types";
+import { parseLoteXML, parseTermos0XML, parseNovosCadastros20XML } from "../utils/xmlParser";
+import { Estabelecimento, TechnicalResponsible, TermoSanitario } from "../types";
 import { motion } from "motion/react";
 
 interface ImporterProps {
@@ -21,7 +21,6 @@ interface ImporterProps {
     estabelecimentos: Estabelecimento[];
     rts: TechnicalResponsible[];
     termos: TermoSanitario[];
-    checklists: FarmaciaChecklist[];
   }) => void;
 }
 
@@ -32,7 +31,6 @@ export default function Importer({ onDataImported }: ImporterProps) {
   const tempEstabsRef = useRef<Estabelecimento[]>([]);
   const tempRtsRef = useRef<TechnicalResponsible[]>([]);
   const tempTermosRef = useRef<TermoSanitario[]>([]);
-  const tempChecklistsRef = useRef<FarmaciaChecklist[]>([]);
 
   // Interactive XML Live Preview node inspector
   const [inspectedXmlType, setInspectedXmlType] = useState<string | null>(null);
@@ -79,17 +77,14 @@ export default function Importer({ onDataImported }: ImporterProps) {
             triggerIntegration();
           } else if (type === "fem_0") {
             let ts: TermoSanitario[] = [];
-            let cs: FarmaciaChecklist[] = [];
             contents.forEach(content => {
               ts = ts.concat(parseTermos0XML(content));
-              cs = cs.concat(parseChecklistXML(content));
             });
             tempTermosRef.current = [...tempTermosRef.current, ...ts];
-            tempChecklistsRef.current = [...tempChecklistsRef.current, ...cs];
             
             setStatus(prev => ({
               ...prev,
-              fem_0: { success: true, msg: `XML xxxx_0 importado (${files.length} arq)`, count: tempTermosRef.current.length + tempChecklistsRef.current.length }
+              fem_0: { success: true, msg: `XML xxxx_0 importado (${files.length} arq)`, count: tempTermosRef.current.length }
             }));
             triggerIntegration();
           } else if (type === "fem_20") {
@@ -97,13 +92,13 @@ export default function Importer({ onDataImported }: ImporterProps) {
             contents.forEach(content => {
               novEs = novEs.concat(parseNovosCadastros20XML(content));
             });
-            const mergedEstabs = [...tempEstabsRef.current];
+            const map = new Map(tempEstabsRef.current.map(item => [item.inscricao, item]));
             novEs.forEach(nov => {
-              if (!mergedEstabs.some(x => x.inscricao === nov.inscricao)) {
-                mergedEstabs.push(nov);
+              if (!map.has(nov.inscricao)) {
+                map.set(nov.inscricao, nov);
               }
             });
-            tempEstabsRef.current = mergedEstabs;
+            tempEstabsRef.current = Array.from(map.values());
             
             // For count info, we keep track of total added by fem_20 via state
             setStatus(prev => {
@@ -148,13 +143,11 @@ export default function Importer({ onDataImported }: ImporterProps) {
     const es = tempEstabsRef.current;
     const rs = tempRtsRef.current;
     const ts = tempTermosRef.current;
-    const cs = tempChecklistsRef.current;
-    if (es.length > 0 || ts.length > 0 || cs.length > 0) {
+    if (es.length > 0 || ts.length > 0) {
       onDataImported({
         estabelecimentos: es,
         rts: rs,
         termos: ts,
-        checklists: cs,
       });
     }
   };

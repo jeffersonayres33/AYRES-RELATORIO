@@ -14,72 +14,84 @@ import {
   TrendingDown,
   Info
 } from "lucide-react";
-import { Estabelecimento, TermoSanitario, FarmaciaChecklist, CitySummary } from "../types";
+import { Estabelecimento, TermoSanitario, CitySummary } from "../types";
 import { getActiveInspectors } from "../utils/mockData";
 import { motion } from "motion/react";
 
 interface DashboardProps {
   estabelecimentos: Estabelecimento[];
   termos: TermoSanitario[];
-  checklists: FarmaciaChecklist[];
   onNavigateToTab: (tab: string) => void;
 }
 
-export default function Dashboard({ estabelecimentos, termos, checklists, onNavigateToTab }: DashboardProps) {
+export default function Dashboard({ estabelecimentos, termos, onNavigateToTab }: DashboardProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedChartCity, setSelectedChartCity] = useState<string | null>(null);
 
-  const totalInspecoes = termos.length;
-  const totalIntimacoes = termos.filter(t => t.nrSeqIntimacao && t.nrSeqIntimacao !== "null").length;
-  const totalAutos = termos.filter(t => t.nrSeqAuto && t.nrSeqAuto !== "null").length;
-  
-  // New Establishments logic: ID contains letter 'I'
-  const novosEstabelecimentos = estabelecimentos.filter(e => e.inscricao.toUpperCase().includes("I")).length;
+  const { totalInspecoes, totalIntimacoes, totalAutos, novosEstabelecimentos, cityMap } = React.useMemo(() => {
+    let tInspecoes = termos.length;
+    let tIntimacoes = 0;
+    let tAutos = 0;
+    let nEstabelecimentos = 0;
+    const map = new Map<string, { inspecoes: number; intimacoes: number; autos: number; novos: number }>();
 
-  // Group stats by city
-  const cityMap = new Map<string, { inspecoes: number; intimacoes: number; autos: number; novos: number }>();
-  
-  estabelecimentos.forEach(e => {
-    const city = e.cidade.toUpperCase();
-    if (!cityMap.has(city)) {
-      cityMap.set(city, { inspecoes: 0, intimacoes: 0, autos: 0, novos: 0 });
-    }
-    const stat = cityMap.get(city)!;
-    if (e.inscricao.toUpperCase().includes("I")) {
-      stat.novos += 1;
-    }
-  });
+    estabelecimentos.forEach(e => {
+      const city = e.cidade.toUpperCase();
+      if (!map.has(city)) map.set(city, { inspecoes: 0, intimacoes: 0, autos: 0, novos: 0 });
+      if (e.inscricao.toUpperCase().includes("I")) {
+        map.get(city)!.novos += 1;
+        nEstabelecimentos += 1;
+      }
+    });
 
-  termos.forEach(t => {
-    const est = estabelecimentos.find(e => e.inscricao === t.estabelecimentoId);
-    const city = est ? est.cidade.toUpperCase() : "INTERIOR AM";
-    if (!cityMap.has(city)) {
-      cityMap.set(city, { inspecoes: 0, intimacoes: 0, autos: 0, novos: 0 });
-    }
-    const stat = cityMap.get(city)!;
-    stat.inspecoes += 1;
-    if (t.nrSeqIntimacao && t.nrSeqIntimacao !== "null") stat.intimacoes += 1;
-    if (t.nrSeqAuto && t.nrSeqAuto !== "null") stat.autos += 1;
-  });
+    termos.forEach(t => {
+      const est = estabelecimentos.find(e => e.inscricao === t.estabelecimentoId);
+      const city = est ? est.cidade.toUpperCase() : "INTERIOR AM";
+      if (!map.has(city)) map.set(city, { inspecoes: 0, intimacoes: 0, autos: 0, novos: 0 });
+      const stat = map.get(city)!;
+      stat.inspecoes += 1;
+      if (t.nrSeqIntimacao && t.nrSeqIntimacao !== "null") {
+        stat.intimacoes += 1;
+        tIntimacoes += 1;
+      }
+      if (t.nrSeqAuto && t.nrSeqAuto !== "null") {
+        stat.autos += 1;
+        tAutos += 1;
+      }
+    });
 
-  const cityList: CitySummary[] = Array.from(cityMap.entries()).map(([cidade, stats]) => ({
-    cidade,
-    inspecoes: stats.inspecoes,
-    intimacoes: stats.intimacoes,
-    autos: stats.autos,
-    novosEstabelecimentos: stats.novos
-  }));
+    return { 
+      totalInspecoes: tInspecoes, 
+      totalIntimacoes: tIntimacoes, 
+      totalAutos: tAutos, 
+      novosEstabelecimentos: nEstabelecimentos, 
+      cityMap: map 
+    };
+  }, [estabelecimentos, termos]);
 
-  const activeInspectors = getActiveInspectors(termos);
+  const cityList: CitySummary[] = React.useMemo(() => 
+    Array.from(cityMap.entries()).map(([cidade, stats]) => ({
+      cidade,
+      inspecoes: stats.inspecoes,
+      intimacoes: stats.intimacoes,
+      autos: stats.autos,
+      novosEstabelecimentos: stats.novos
+    })), [cityMap]);
+
+  const activeInspectors = React.useMemo(() => getActiveInspectors(termos), [termos]);
 
   // Search filtered cities
-  const filteredCityList = cityList.filter(c => 
-    c.cidade.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredCityList = React.useMemo(() => 
+    cityList.filter(c => c.cidade.toLowerCase().includes(searchTerm.toLowerCase())),
+    [cityList, searchTerm]
   );
 
   // Calculate highest infraction rate city for recommendation
-  const warningCities = cityList.filter(c => c.autos > 0 || c.intimacoes > 0)
-    .sort((a, b) => (b.autos + b.intimacoes) - (a.autos + a.intimacoes));
+  const warningCities = React.useMemo(() => 
+    cityList.filter(c => c.autos > 0 || c.intimacoes > 0)
+      .sort((a, b) => (b.autos + b.intimacoes) - (a.autos + a.intimacoes)),
+    [cityList]
+  );
 
   return (
     <div className="space-y-6 text-slate-800">
@@ -92,7 +104,7 @@ export default function Dashboard({ estabelecimentos, termos, checklists, onNavi
               Painel Integrado de Gestão e automação de Relatórios de inspeções
             </h2>
             <p className="text-slate-500 text-sm md:text-base mt-1 max-w-2xl leading-relaxed font-medium">
-              Consolidação analítica de termos de inspeção, relatórios de RDC 44, dados cadastrais e escalas de responsáveis técnicos para os Fiscais Farmacêuticos do CRF-AM no interior do Amazonas.
+              Consolidação analítica de termos de inspeção, dados cadastrais e escalas de responsáveis técnicos para os Fiscais Farmacêuticos do CRF-AM no interior do Amazonas.
             </p>
           </div>
           <div className="flex items-center gap-2.5">

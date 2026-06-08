@@ -11,7 +11,7 @@ import {
   PageBreak,
   HeightRule
 } from "docx";
-import { Estabelecimento, TermoSanitario, FarmaciaChecklist } from "../types";
+import { Estabelecimento, TermoSanitario } from "../types";
 
 import { DEFAULT_FULL_REPORT_TEMPLATE } from "./fullReportTemplate";
 
@@ -52,14 +52,13 @@ interface ExportMunicipalProps {
   filterLabel: string;
   filteredEstabs: Estabelecimento[];
   termos: TermoSanitario[];
-  checklists: FarmaciaChecklist[];
   customAvaliacaoGeralText?: string;
   dateFormat?: 'apenas_data' | 'data_hora' | 'sem_data';
   travelPeriod?: string;
 }
 
 export const generateMunicipalReportChildren = (
-  { selectedCity, filterLabel, filteredEstabs, termos, checklists, customAvaliacaoGeralText, dateFormat = 'apenas_data' }: ExportMunicipalProps
+  { selectedCity, filterLabel, filteredEstabs, termos, customAvaliacaoGeralText, dateFormat = 'apenas_data' }: ExportMunicipalProps
 ) => {
   const childrenElements: any[] = [];
 
@@ -330,7 +329,7 @@ export const exportFullMunicipalDocx = async (
   options: ExportMunicipalProps,
   travelFiscais: string
 ) => {
-  const { selectedCity, filterLabel, filteredEstabs, termos, checklists, customAvaliacaoGeralText, travelPeriod, dateFormat = 'apenas_data' } = options;
+  const { selectedCity, filterLabel, filteredEstabs, termos, customAvaliacaoGeralText, travelPeriod, dateFormat = 'apenas_data' } = options;
 
   let templateBase64 = null;
   let customTemplateVariables: Record<string, string> = {};
