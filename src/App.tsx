@@ -140,7 +140,6 @@ export default function App() {
   const tabs = [
     { id: "importacao", label: "Importação XML", icon: Upload, badge: !hasData ? "Pendente" : "Carregado" },
     { id: "dashboard", label: "Painel Geral", icon: FileText, badge: hasData ? "Ativo" : null },
-    { id: "checklists", label: "RDC 44 Checklists", icon: ClipboardCheck, badge: checklists.length || null },
     { id: "cidades", label: "Relatórios", icon: MapPin, badge: null },
     { id: "admin", label: "Painel do Administrador", icon: Users, badge: null }
   ];
@@ -342,14 +341,6 @@ export default function App() {
               {activeTab === "importacao" && (
                 <Importer
                   onDataImported={handleDataImported}
-                />
-              )}
-
-              {activeTab === "checklists" && (
-                <ChecklistCheck
-                  estabelecimentos={estabelecimentos}
-                  checklists={checklists}
-                  rts={rts}
                 />
               )}
 

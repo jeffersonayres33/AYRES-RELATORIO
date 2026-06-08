@@ -102,6 +102,8 @@ export default function CustomVariables() {
             <ul className="list-disc ml-5 mt-1 grid grid-cols-1 sm:grid-cols-2 gap-x-4">
               <li><code>&lt;cidade&gt;</code> ou <code>[CIDADE]</code>: Nome da Cidade</li>
               <li><code>[NOME_FISCAL1]</code>, <code>[NOME_FISCAL2]</code>... : Nome de cada fiscalizado</li>
+              <li><code>[CRF_FISCAL1]</code>, <code>[CRF_FISCAL2]</code>: CRF correspondente</li>
+              <li><code>[SEXO_FISCAL1]</code>, <code>[SEXO_FISCAL2]</code>: "Fiscal Farmacêutico(a)"</li>
               <li><code>[PERIODO_DE_FISCALIZAÇÃO]</code>: Período Operacional</li>
               <li><code>&lt;data&gt;</code>, <code>[DATA]</code> ou <code>[DADOS]</code>: Data por extenso (ex: 12 de maio de 2026)</li>
             </ul>

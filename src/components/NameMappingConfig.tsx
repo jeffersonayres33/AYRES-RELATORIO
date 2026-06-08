@@ -8,6 +8,7 @@ export interface NameMapping {
   id: string;
   namePart: string;
   fullNameValue: string;
+  gender?: "Masculino" | "Feminino";
 }
 
 export default function NameMappingConfig() {
@@ -19,6 +20,7 @@ export default function NameMappingConfig() {
   
   const [namePart, setNamePart] = useState("");
   const [fullNameValue, setFullNameValue] = useState("");
+  const [gender, setGender] = useState<"Masculino" | "Feminino">("Masculino");
 
   const fetchMappings = async () => {
     try {
@@ -52,11 +54,13 @@ export default function NameMappingConfig() {
       const docId = id || formattedNamePart.replace(/[^A-Z0-9_]/g, '');
       await setDoc(doc(db, "fiscal_name_mappings", docId), {
         namePart: formattedNamePart,
-        fullNameValue: fullNameValue.trim().toUpperCase()
+        fullNameValue: fullNameValue.trim().toUpperCase(),
+        gender
       });
       await fetchMappings();
       setNamePart("");
       setFullNameValue("");
+      setGender("Masculino");
       setIsAdding(false);
       setEditingId(null);
     } catch(e) {
@@ -85,6 +89,7 @@ export default function NameMappingConfig() {
     setEditingId(m.id);
     setNamePart(m.namePart);
     setFullNameValue(m.fullNameValue);
+    setGender(m.gender || "Masculino");
     setIsAdding(false);
   };
 
@@ -111,7 +116,7 @@ export default function NameMappingConfig() {
 
       {(isAdding || editingId) && (
         <div className="bg-slate-50 rounded-2xl p-5 border border-slate-200">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-extrabold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Parte do Nome</label>
               <input 
@@ -133,10 +138,21 @@ export default function NameMappingConfig() {
                 className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition-all text-sm text-slate-700 uppercase"
               />
             </div>
+            <div>
+              <label className="block text-xs font-extrabold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Sexo (Para [SEXO_FISCAL])</label>
+              <select
+                value={gender}
+                onChange={e => setGender(e.target.value as "Masculino" | "Feminino")}
+                className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition-all text-sm font-bold text-slate-800"
+              >
+                <option value="Masculino">Masculino</option>
+                <option value="Feminino">Feminino</option>
+              </select>
+            </div>
           </div>
           <div className="flex justify-end gap-3 mt-4">
             <button 
-              onClick={() => { setIsAdding(false); setEditingId(null); }}
+              onClick={() => { setIsAdding(false); setEditingId(null); setGender("Masculino"); }}
               className="px-4 py-2 text-slate-500 hover:bg-slate-200 bg-slate-100 rounded-xl font-bold uppercase text-xs tracking-wider transition-all cursor-pointer"
             >
               Cancelar
@@ -161,7 +177,7 @@ export default function NameMappingConfig() {
                   <code className="bg-slate-100 font-bold text-violet-700 px-2 py-0.5 rounded text-sm border border-slate-200">{m.namePart}</code>
                 </div>
                 <p className="text-slate-600 text-sm mt-1 border-l-2 pl-2 border-violet-400">
-                  Nome Correspondente: <strong className="text-slate-800">{m.fullNameValue}</strong>
+                  Nome Correspondente: <strong className="text-slate-800">{m.fullNameValue}</strong> • <span className="text-xs text-slate-500">[{m.gender === 'Feminino' ? 'Fiscal Farmacêutica' : 'Fiscal Farmacêutico'}]</span>
                 </p>
               </div>
               <div className="flex items-center gap-1 shrink-0 transition-opacity">

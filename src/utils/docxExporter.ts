@@ -404,13 +404,13 @@ export const exportFullMunicipalDocx = async (
   };
 
   // Fetch Name Mappings
-  const nameMappings: {namePart: string; fullNameValue: string}[] = [];
+  const nameMappings: {namePart: string; fullNameValue: string; gender?: string}[] = [];
   try {
     const mappingsSnap = await getDocs(collection(db, "fiscal_name_mappings"));
     mappingsSnap.forEach(d => {
       const data = d.data();
       if (data.namePart && data.fullNameValue) {
-        nameMappings.push({ namePart: data.namePart, fullNameValue: data.fullNameValue });
+        nameMappings.push({ namePart: data.namePart, fullNameValue: data.fullNameValue, gender: data.gender });
       }
     });
   } catch (e) {
@@ -424,9 +424,17 @@ export const exportFullMunicipalDocx = async (
         return m.fullNameValue;
       }
     }
-    // Hardcoded defaults to ensure tests/current users aren't broken, if any. 
-    // They requested to be able to add other full names.
     return name;
+  };
+
+  const getGenderForName = (name: string) => {
+    const upperName = name.toUpperCase();
+    for (const m of nameMappings) {
+      if (upperName.includes(m.namePart)) {
+        return m.gender === "Feminino" ? "Fiscal Farmacêutica" : "Fiscal Farmacêutico";
+      }
+    }
+    return "Fiscal Farmacêutico(a)";
   };
 
   // Convert incoming text to full names before further processing
@@ -438,6 +446,7 @@ export const exportFullMunicipalDocx = async (
   const nomeFiscalStr = processedTravelFiscais;
   const fiscalNames = nomeFiscalStr.split(" / ");
   const crfFiscalStr = fiscalNames.map(f => getCrfForName(f.trim())).join(" / ");
+  const sexoFiscalStr = initialNames.map(f => getGenderForName(f.trim())).join(" / ");
   const dateFormatted = new Date().toLocaleDateString('pt-BR', { year: 'numeric', month: 'long', day: 'numeric' });
   const localDataStr = `${selectedCity}, ${dateFormatted}`;
 
@@ -460,9 +469,16 @@ export const exportFullMunicipalDocx = async (
       fiscalNames.forEach((name, i) => {
          const regexName = new RegExp(`\\[NOME_FISCAL${i + 1}\\]`, 'gi');
          const regexCrf = new RegExp(`\\[CRF_FISCAL${i + 1}\\]`, 'gi');
+         const regexSexo = new RegExp(`\\[SEXO_FISCAL${i + 1}\\]`, 'gi');
          text = text.replace(regexName, name.trim());
          text = text.replace(regexCrf, getCrfForName(name.trim()));
+         text = text.replace(regexSexo, getGenderForName(initialNames[i].trim()));
       });
+
+      // Optional generic variables targeting exactly [NOME_FISCAL], [CRF_FISCAL], [SEXO_FISCAL]
+      text = text.replace(/\[NOME_FISCAL\]/gi, nomeFiscalStr);
+      text = text.replace(/\[CRF_FISCAL\]/gi, crfFiscalStr);
+      text = text.replace(/\[SEXO_FISCAL\]/gi, sexoFiscalStr);
 
       customTemplateVariables[key] = text;
     }
@@ -495,9 +511,15 @@ export const exportFullMunicipalDocx = async (
   fiscalNames.forEach((name, i) => {
     const regexName = new RegExp(`\\[NOME_FISCAL${i + 1}\\]`, 'gi');
     const regexCrf = new RegExp(`\\[CRF_FISCAL${i + 1}\\]`, 'gi');
+    const regexSexo = new RegExp(`\\[SEXO_FISCAL${i + 1}\\]`, 'gi');
     assessmentText = assessmentText.replace(regexName, name.trim());
     assessmentText = assessmentText.replace(regexCrf, getCrfForName(name.trim()));
+    assessmentText = assessmentText.replace(regexSexo, getGenderForName(initialNames[i].trim()));
   });
+  
+  assessmentText = assessmentText.replace(/\[NOME_FISCAL\]/gi, nomeFiscalStr);
+  assessmentText = assessmentText.replace(/\[CRF_FISCAL\]/gi, crfFiscalStr);
+  assessmentText = assessmentText.replace(/\[SEXO_FISCAL\]/gi, sexoFiscalStr);
 
   relatorioSimplesXml += pBold("3. DA AVALIAÇÃO GERAL");
   assessmentText.split(/\r?\n/).forEach(par => {
@@ -633,6 +655,7 @@ export const exportFullMunicipalDocx = async (
         let resolvedLine = line;
         resolvedLine = resolvedLine.replace(/\[NOME_FISCAL\]/g, nomeFiscalStr);
         resolvedLine = resolvedLine.replace(/\[CRF_FISCAL\]/g, crfFiscalStr);
+        resolvedLine = resolvedLine.replace(/\[SEXO_FISCAL\]/g, sexoFiscalStr);
         resolvedLine = resolvedLine.replace(/\[LOCAL_DATA_POR_EXTENSO\]/g, localDataStr);
         
         const isHeader = resolvedLine.match(/^[A-Z0-9.\- \t]+$/) && resolvedLine.length > 3 && !resolvedLine.includes(",");
@@ -683,6 +706,7 @@ export const exportFullMunicipalDocx = async (
     const renderData: any = {
         NOME_FISCAL: nomeFiscalStr,
         CRF_FISCAL: crfFiscalStr,
+        SEXO_FISCAL: sexoFiscalStr,
         LOCAL_DATA_POR_EXTENSO: localDataStr,
         DATA: dateFormatted,
         DADOS: dateFormatted,
@@ -696,6 +720,7 @@ export const exportFullMunicipalDocx = async (
     fiscalNames.forEach((name, i) => {
         renderData[`NOME_FISCAL${i + 1}`] = name.trim();
         renderData[`CRF_FISCAL${i + 1}`] = getCrfForName(name.trim());
+        renderData[`SEXO_FISCAL${i + 1}`] = getGenderForName(initialNames[i].trim());
     });
 
     // docxtemplater will now replace tags inside [ ]
@@ -730,13 +755,13 @@ export const exportTravelDocx = async (
 ) => {
   const childrenElements: any[] = [];
 
-  const nameMappings: {namePart: string; fullNameValue: string}[] = [];
+  const nameMappings: {namePart: string; fullNameValue: string; gender?: string}[] = [];
   try {
     const mappingsSnap = await getDocs(collection(db, "fiscal_name_mappings"));
     mappingsSnap.forEach(d => {
       const data = d.data();
       if (data.namePart && data.fullNameValue) {
-        nameMappings.push({ namePart: data.namePart, fullNameValue: data.fullNameValue });
+        nameMappings.push({ namePart: data.namePart, fullNameValue: data.fullNameValue, gender: data.gender });
       }
     });
   } catch (e) {
@@ -759,48 +784,6 @@ export const exportTravelDocx = async (
   // Use the processed names within the generator
   travelFiscais = processedTravelFiscais;
 
-  // Header section
-  childrenElements.push(
-    createParagraph("CONSELHO REGIONAL DE FARMÁCIA DO ESTADO DO AMAZONAS", {
-      bold: true,
-      size: 24,
-      align: AlignmentType.CENTER,
-      before: 0,
-      after: 40,
-    })
-  );
-  childrenElements.push(
-    createParagraph("CRF-AM • SERVIÇO DE FISCALIZAÇÃO PROFISSIONAL", {
-      bold: true,
-      size: 20,
-      align: AlignmentType.CENTER,
-      color: "555555",
-      before: 0,
-      after: 40,
-    })
-  );
-  childrenElements.push(
-    createParagraph("Setor de Controle de Escalas e Deslocamentos Operacionais", {
-      bold: false,
-      italic: true,
-      size: 18,
-      align: AlignmentType.CENTER,
-      color: "777777",
-      before: 0,
-      after: 200,
-    })
-  );
-
-  // Decorative border
-  childrenElements.push(
-    createParagraph("_________________________________________________________________________________", {
-      align: AlignmentType.CENTER,
-      color: "CCCCCC",
-      before: 0,
-      after: 300,
-    })
-  );
-
   // Document Title
   childrenElements.push(
     createParagraph("RESUMO CONSOLIDADO DE VIAGEM E FISCALIZAÇÃO MÓVEL", {
@@ -811,20 +794,10 @@ export const exportTravelDocx = async (
       after: 50,
     })
   );
-  childrenElements.push(
-    createParagraph(`RELATÓRIO DE PRESTAÇÃO DE CONTAS E PRODUTIVIDADE OPERACIONAL`, {
-      bold: true,
-      size: 16,
-      align: AlignmentType.CENTER,
-      color: "555555",
-      before: 0,
-      after: 300,
-    })
-  );
 
   // 1. METADADOS DO PERCURSO
   childrenElements.push(
-    createParagraph("I. METADADOS DO DESLOCAMENTO", {
+    createParagraph("I. DADOS", {
       bold: true,
       size: 22,
       before: 200,
@@ -912,7 +885,7 @@ export const exportTravelDocx = async (
       new TableRow({
         children: [
           new TableCell({
-            children: [createParagraph("Total de Estabelecimentos Vistoriados (Com Termo de Inspeção)", { size: 18 })],
+            children: [createParagraph("Total de termos de inspeções", { size: 18 })],
           }),
           new TableCell({
             children: [createParagraph(`${countFiscalizados} empresa(s)`, { size: 18, bold: true })],
@@ -922,7 +895,7 @@ export const exportTravelDocx = async (
       new TableRow({
         children: [
           new TableCell({
-            children: [createParagraph("Termos de Intimação / Notificações Sanitárias Emitidos", { size: 18 })],
+            children: [createParagraph("Termos de Intimação", { size: 18 })],
           }),
           new TableCell({
             children: [createParagraph(`${countIntimados} termo(s)`, { size: 18, color: "B45309", bold: true })],
@@ -932,7 +905,7 @@ export const exportTravelDocx = async (
       new TableRow({
         children: [
           new TableCell({
-            children: [createParagraph("Autos de Infração Lavrados (Penalidades Operacionais)", { size: 18 })],
+            children: [createParagraph("Autos de Infração", { size: 18 })],
           }),
           new TableCell({
             children: [createParagraph(`${countAutuados} auto(s)`, { size: 18, color: "991B1B", bold: true })],
@@ -942,7 +915,7 @@ export const exportTravelDocx = async (
       new TableRow({
         children: [
           new TableCell({
-            children: [createParagraph("Novas Empresas / Estabelecimentos Clandestinos Cadastrados", { size: 18 })],
+            children: [createParagraph("Novos Estabelecimentos", { size: 18 })],
           }),
           new TableCell({
             children: [createParagraph(`${countNovos} cadastro(s)`, { size: 18, color: "065F46", bold: true })],
@@ -974,19 +947,19 @@ export const exportTravelDocx = async (
         }),
         new TableCell({
           shading: { fill: "F3F4F6" },
-          children: [createParagraph("X-VISTORIAS", { bold: true, size: 17, align: AlignmentType.CENTER })],
+          children: [createParagraph("Termos de Inspeções", { bold: true, size: 17, align: AlignmentType.CENTER })],
         }),
         new TableCell({
           shading: { fill: "F3F4F6" },
-          children: [createParagraph("X-INTIMAÇÕES", { bold: true, size: 17, align: AlignmentType.CENTER })],
+          children: [createParagraph("Intimações", { bold: true, size: 17, align: AlignmentType.CENTER })],
         }),
         new TableCell({
           shading: { fill: "F3F4F6" },
-          children: [createParagraph("X-AUTUAÇÕES", { bold: true, size: 17, align: AlignmentType.CENTER })],
+          children: [createParagraph("Auto de infrações", { bold: true, size: 17, align: AlignmentType.CENTER })],
         }),
         new TableCell({
           shading: { fill: "F3F4F6" },
-          children: [createParagraph("X-NOVOS CADASTROS", { bold: true, size: 17, align: AlignmentType.CENTER })],
+          children: [createParagraph("Novos Estabelecimentos", { bold: true, size: 17, align: AlignmentType.CENTER })],
         }),
       ],
     }),
@@ -1015,6 +988,34 @@ export const exportTravelDocx = async (
       })
     );
   });
+  
+  // Add total row at the end of the cityTableRows
+  cityTableRows.push(
+    new TableRow({
+      children: [
+        new TableCell({
+          shading: { fill: "F3F4F6" },
+          children: [createParagraph("TOTAL", { size: 17, bold: true })],
+        }),
+        new TableCell({
+          shading: { fill: "F3F4F6" },
+          children: [createParagraph(String(countFiscalizados), { size: 17, bold: true, align: AlignmentType.CENTER })],
+        }),
+        new TableCell({
+          shading: { fill: "F3F4F6" },
+          children: [createParagraph(String(countIntimados), { size: 17, bold: true, align: AlignmentType.CENTER, color: countIntimados > 0 ? "B45309" : undefined })],
+        }),
+        new TableCell({
+          shading: { fill: "F3F4F6" },
+          children: [createParagraph(String(countAutuados), { size: 17, bold: true, align: AlignmentType.CENTER, color: countAutuados > 0 ? "991B1B" : undefined })],
+        }),
+        new TableCell({
+          shading: { fill: "F3F4F6" },
+          children: [createParagraph(String(countNovos), { size: 17, bold: true, align: AlignmentType.CENTER, color: countNovos > 0 ? "065F46" : undefined })],
+        }),
+      ],
+    })
+  );
 
   const citySummaryTable = new Table({
     width: {
@@ -1026,84 +1027,6 @@ export const exportTravelDocx = async (
 
   childrenElements.push(citySummaryTable);
   childrenElements.push(createParagraph("", { before: 0, after: 200 }));
-
-  // Disclaimer / Declaration
-  childrenElements.push(
-    new Paragraph({
-      spacing: { before: 300, after: 300 },
-      children: [
-        new TextRun({
-          text: "DECLARAÇÃO DA COMISSÃO DE FISCALIZAÇÃO MÓVEL: ",
-          bold: true,
-          font: "Arial",
-          size: 17,
-          color: "333333",
-        }),
-        new TextRun({
-          text: `Os fiscais signatários declaram que as informações constantes neste relatório correspondem exatamente às atividades realizadas e registradas no banco operacional durante o período de viagem acima caracterizado, sob as penas do regimento e código profissional em curso.`,
-          font: "Arial",
-          size: 17,
-          color: "666665",
-        }),
-      ],
-    })
-  );
-
-  childrenElements.push(
-    new Paragraph({
-      children: [new PageBreak()],
-    })
-  );
-
-  childrenElements.push(
-    createParagraph("_________________________________________________________________________________", {
-      align: AlignmentType.CENTER,
-      color: "CCCCCC",
-      before: 200,
-      after: 400,
-    })
-  );
-
-  childrenElements.push(
-    createParagraph("CRF - AM • SERVIÇO DE FISCALIZAÇÃO PROFISSIONAL", {
-      bold: true,
-      size: 20,
-      align: AlignmentType.CENTER,
-      after: 600,
-    })
-  );
-
-  const names = travelFiscais.split("/");
-  const signatureTable = new Table({
-    width: {
-      size: 100,
-      type: WidthType.PERCENTAGE,
-    },
-    rows: [
-      new TableRow({
-        children: [
-          new TableCell({
-            width: { size: 50, type: WidthType.PERCENTAGE },
-            children: [
-              createParagraph("_________________________", { align: AlignmentType.CENTER, after: 40 }),
-              createParagraph((names[0] || "FISCAL OPERANTE 1").trim().toUpperCase(), { bold: true, size: 18, align: AlignmentType.CENTER, after: 20 }),
-              createParagraph("Fiscal Farmacêutico Operante", { size: 16, color: "555555", align: AlignmentType.CENTER }),
-            ],
-          }),
-          new TableCell({
-            width: { size: 50, type: WidthType.PERCENTAGE },
-            children: [
-              createParagraph("_________________________", { align: AlignmentType.CENTER, after: 40 }),
-              createParagraph((names[1] || "FISCAL OPERANTE 2").trim().toUpperCase(), { bold: true, size: 18, align: AlignmentType.CENTER, after: 20 }),
-              createParagraph("Fiscal Farmacêutico Co-Atuante", { size: 16, color: "555555", align: AlignmentType.CENTER }),
-            ],
-          }),
-        ],
-      }),
-    ],
-  });
-
-  childrenElements.push(signatureTable);
 
   const doc = new Document({
     sections: [
