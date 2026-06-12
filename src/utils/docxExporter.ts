@@ -540,14 +540,7 @@ export const exportFullMunicipalDocx = async (
   assessmentText.split(/\r?\n\n/).forEach(pBlock => {
     if (pBlock.trim() === '') return;
     if (pBlock.startsWith("**") && pBlock.endsWith("**")) {
-      childrenElements.push(
-        createParagraph(pBlock.substring(2, pBlock.length - 2), {
-          bold: true,
-          size: 24, // 12pt
-          before: 300,
-          after: 150,
-        })
-      );
+      relatorioSimplesXml += pBold(pBlock.substring(2, pBlock.length - 2));
     } else {
       pBlock.split(/\r?\n/).forEach(line => {
         if (line.trim() !== "") {
