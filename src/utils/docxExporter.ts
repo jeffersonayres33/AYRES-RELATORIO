@@ -78,34 +78,50 @@ No Município de ${selectedCity.toUpperCase()} foram realizadas ${filteredEstabs
 
   const assessmentText = customAvaliacaoGeralText || defaultAssessmentFallback;
 
-  childrenElements.push(
-    createParagraph(assessmentText, {
-      size: 24,
-      before: 100,
-      after: 200,
-    })
-  );
+  assessmentText.split(/\r?\n\n/).forEach(pBlock => {
+    if (pBlock.trim() === "") return;
+    if (pBlock.startsWith("**") && pBlock.endsWith("**")) {
+      childrenElements.push(
+        createParagraph(pBlock.substring(2, pBlock.length - 2), {
+          bold: true,
+          size: 24, // 12pt
+          before: 300,
+          after: 150,
+        })
+      );
+    } else {
+      childrenElements.push(
+        createParagraph(pBlock.trim(), {
+          size: 24,
+          before: 100,
+          after: 200,
+        })
+      );
+    }
+  });
 
-  // 3. ITEM 3.1 DA AVALIAÇÃO ESPECÍFICA DE CADA ESTABELECIMENTO
-  childrenElements.push(
-    createParagraph("3.1 DA AVALIAÇÃO ESPECÍFICA DE CADA ESTABELECIMENTO", {
-      bold: true,
-      size: 24, // 12pt
-      before: 350,
-      after: 150,
-    })
-  );
+  // 4. DA AVALIAÇÃO ESPECÍFICA DE CADA ESTABELECIMENTO
+  if (!assessmentText.includes("4. DA AVALIAÇÃO ESPECÍFICA DE CADA ESTABELECIMENTO")) {
+    childrenElements.push(
+      createParagraph("4. DA AVALIAÇÃO ESPECÍFICA DE CADA ESTABELECIMENTO", {
+        bold: true,
+        size: 24, // 12pt
+        before: 350,
+        after: 150,
+      })
+    );
 
-  childrenElements.push(
-    createParagraph(
-      "Em virtude do risco sanitário e das irregularidades identificadas perante o CRF/AM, será realizada uma análise individualizada de alguns estabelecimentos afetados. Essa medida visa fornecer informações detalhadas aos órgãos competentes, garantindo que as devidas providências sejam tomadas para assegurar a conformidade e a segurança na prestação de serviços farmacêuticos.",
-      {
-        size: 24,
-        before: 100,
-        after: 200,
-      }
-    )
-  );
+    childrenElements.push(
+      createParagraph(
+        "Em virtude do risco sanitário e das irregularidades identificadas perante o CRF/AM, será realizada uma análise individualizada de alguns estabelecimentos afetados. Essa medida visa fornecer informações detalhadas aos órgãos competentes, garantindo que as devidas providências sejam tomadas para assegurar a conformidade e a segurança na prestação de serviços farmacêuticos.",
+        {
+          size: 24,
+          before: 100,
+          after: 200,
+        }
+      )
+    );
+  }
 
   if (filteredEstabs.length === 0) {
     childrenElements.push(
@@ -521,12 +537,30 @@ export const exportFullMunicipalDocx = async (
   assessmentText = assessmentText.replace(/\[SEXO_FISCAL\]/gi, sexoFiscalStr);
 
   relatorioSimplesXml += pBold("3. DA AVALIAÇÃO GERAL");
-  assessmentText.split(/\r?\n/).forEach(par => {
-    if (par.trim() !== '') relatorioSimplesXml += p(r(par));
+  assessmentText.split(/\r?\n\n/).forEach(pBlock => {
+    if (pBlock.trim() === '') return;
+    if (pBlock.startsWith("**") && pBlock.endsWith("**")) {
+      childrenElements.push(
+        createParagraph(pBlock.substring(2, pBlock.length - 2), {
+          bold: true,
+          size: 24, // 12pt
+          before: 300,
+          after: 150,
+        })
+      );
+    } else {
+      pBlock.split(/\r?\n/).forEach(line => {
+        if (line.trim() !== "") {
+          relatorioSimplesXml += p(r(line));
+        }
+      });
+    }
   });
 
-  relatorioSimplesXml += pBold("3.1 DA AVALIAÇÃO ESPECÍFICA DE CADA ESTABELECIMENTO");
-  relatorioSimplesXml += p(r("Em virtude do risco sanitário e das irregularidades identificadas perante o CRF/AM, será realizada uma análise individualizada de alguns estabelecimentos afetados. Essa medida visa fornecer informações detalhadas aos órgãos competentes, garantindo que as devidas providências sejam tomadas para assegurar a conformidade e a segurança na prestação de serviços farmacêuticos."));
+  if (!assessmentText.includes("4. DA AVALIAÇÃO ESPECÍFICA DE CADA ESTABELECIMENTO")) {
+    relatorioSimplesXml += pBold("4. DA AVALIAÇÃO ESPECÍFICA DE CADA ESTABELECIMENTO");
+    relatorioSimplesXml += p(r("Em virtude do risco sanitário e das irregularidades identificadas perante o CRF/AM, será realizada uma análise individualizada de alguns estabelecimentos afetados. Essa medida visa fornecer informações detalhadas aos órgãos competentes, garantindo que as devidas providências sejam tomadas para assegurar a conformidade e a segurança na prestação de serviços farmacêuticos."));
+  }
 
   if (filteredEstabs.length === 0) {
     relatorioSimplesXml += p(r(`Nenhum estabelecimento encontrado com este filtro: ${filterLabel}`));

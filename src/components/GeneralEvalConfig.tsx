@@ -13,7 +13,8 @@ export default function GeneralEvalConfig() {
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<"items" | "variables">("items");
+  const [activeTab, setActiveTab] = useState<"intro" | "farmacias" | "laboratorios" | "farmacia_hospitalar" | "remume" | "outras_irregularidades" | "conclusao_especifica" | "variables">("intro");
+  const [introText, setIntroText] = useState("");
 
   const [editingItem, setEditingItem] = useState<Partial<EvalItem> | null>(null);
   const [editingVariable, setEditingVariable] = useState<Partial<EvalVariable> | null>(null);
@@ -69,10 +70,40 @@ export default function GeneralEvalConfig() {
     }
   };
 
+  const fetchIntro = async () => {
+    try {
+      const { getDoc, setDoc } = await import("firebase/firestore");
+      const d = await getDoc(doc(db, "eval_config", "intro_text"));
+      if (d.exists() && d.data().text) {
+        setIntroText(d.data().text);
+      } else {
+        const defaultText = `Como é sabido, é de competência do Conselho Regional de Farmácia a fiscalização do exercício da profissão farmacêutica no Estado do Amazonas, visando resguardar o cumprimento da legislação vigente e, indiretamente, atuar na promoção da saúde em todo Estado.\n\nNo Município de [MUNICIPIO] foram realizadas [QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO] inspeções técnicas em estabelecimentos farmacêuticos privados e assistência pública do SUS, de modo a mensurar a conformidade sanitária nas ações locais.\n\nPor fim, é de fundamental importância que as autoridades sanitárias intensifiquem a fiscalização nos estabelecimentos citados, a fim de coibir as irregularidades sanitárias que podem comprometer a saúde da população e garantir que as normas e regulamentações sejam cumpridas, assegurando a qualidade dos serviços prestados e a segurança dos pacientes.`;
+        await setDoc(doc(db, "eval_config", "intro_text"), { text: defaultText });
+        setIntroText(defaultText);
+      }
+    } catch(e) {
+      console.error(e);
+    }
+  };
+
+  const saveIntroText = async () => {
+    try {
+      showLoading("Salvando texto introdutório...");
+      const { setDoc } = await import("firebase/firestore");
+      await setDoc(doc(db, "eval_config", "intro_text"), { text: introText });
+      toast.success("Texto introdutório salvo com sucesso!");
+    } catch (e: any) {
+      console.error(e);
+      toast.error("Erro ao salvar texto introdutório.");
+    } finally {
+      hideLoading();
+    }
+  };
+
   const fetchData = async () => {
     setLoadingInitial(true);
     setError(null);
-    await Promise.all([fetchItems(), fetchVariables()]);
+    await Promise.all([fetchItems(), fetchVariables(), fetchIntro()]);
     setLoadingInitial(false);
   };
 
@@ -98,7 +129,9 @@ export default function GeneralEvalConfig() {
         description: editingItem.description || "",
         paragraph: editingItem.paragraph,
         order: editingItem.order || items.length + 1,
-        defaultChecked: editingItem.defaultChecked || false
+        defaultChecked: editingItem.defaultChecked || false,
+        isHidden: editingItem.isHidden || false,
+        category: editingItem.category || (["farmacias", "laboratorios", "farmacia_hospitalar", "remume", "outras_irregularidades", "conclusao_especifica"].includes(activeTab) ? activeTab : "farmacias")
       };
 
       await setDoc(docRef, dataToSave);
@@ -142,7 +175,13 @@ export default function GeneralEvalConfig() {
       const dataToSave: EvalVariable = {
         id: processedId,
         name: editingVariable.name.trim(),
+        type: editingVariable.type || "table",
         formatPattern: (editingVariable.formatPattern || "").trim() || variableFields.map(f => `{${f.key.trim()}}`).join(" - "),
+        conditionRefVar: editingVariable.conditionRefVar || "",
+        conditionOperator: editingVariable.conditionOperator || "equals",
+        conditionTargetValue: editingVariable.conditionTargetValue || "",
+        conditionTrueText: editingVariable.conditionTrueText || "",
+        conditionFalseText: editingVariable.conditionFalseText || "",
         fields: variableFields.map(f => ({
           key: f.key.trim().toLowerCase(),
           label: f.label.trim(),
@@ -187,27 +226,29 @@ export default function GeneralEvalConfig() {
     }
   };
 
-  const changeOrder = async (index: number, direction: 'up' | 'down') => {
-    if (direction === 'up' && index === 0) return;
-    if (direction === 'down' && index === items.length - 1) return;
+  const changeOrder = async (categoryId: string | undefined, indexInCategory: number, direction: 'up' | 'down') => {
+    const categoryItems = items.filter(i => (i.category === categoryId) || (!i.category && categoryId === "farmacias")).sort((a,b) => (a.order || 0) - (b.order || 0));
+    
+    if (direction === 'up' && indexInCategory === 0) return;
+    if (direction === 'down' && indexInCategory === categoryItems.length - 1) return;
     
     showLoading("Reorganizando itens...");
     try {
-      const newItems = [...items];
-      const targetIndex = direction === 'up' ? index - 1 : index + 1;
+      const targetIndex = direction === 'up' ? indexInCategory - 1 : indexInCategory + 1;
+      const currentItem = categoryItems[indexInCategory];
+      const targetItem = categoryItems[targetIndex];
       
-      // Swap order property
-      const tempOrder = newItems[index].order;
-      newItems[index].order = newItems[targetIndex].order;
-      newItems[targetIndex].order = tempOrder;
+      const tempOrder = currentItem.order;
+      const newCurrentOrder = targetItem.order;
+      const newTargetOrder = tempOrder;
 
       const batch = writeBatch(db);
       
-      const ref1 = doc(db, "evaluation_items", newItems[index].id);
-      batch.update(ref1, { order: newItems[index].order });
+      const ref1 = doc(db, "evaluation_items", currentItem.id);
+      batch.update(ref1, { order: newCurrentOrder });
       
-      const ref2 = doc(db, "evaluation_items", newItems[targetIndex].id);
-      batch.update(ref2, { order: newItems[targetIndex].order });
+      const ref2 = doc(db, "evaluation_items", targetItem.id);
+      batch.update(ref2, { order: newTargetOrder });
 
       await batch.commit();
       await fetchItems();
@@ -219,25 +260,104 @@ export default function GeneralEvalConfig() {
     }
   };
 
+  const handleSaveIntro = async () => {
+    showLoading("Salvando introdução...");
+    try {
+      await setDoc(doc(db, "evaluation_intro", "default"), { text: introText });
+      setError(null);
+    } catch (e: any) {
+      console.error(e);
+      setError("Falha ao salvar texto introdutório.");
+    } finally {
+      hideLoading();
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Navigation Tabs */}
-      <div className="flex bg-slate-100 p-1 rounded-2xl max-w-sm border border-slate-200">
+      <div className="flex flex-wrap bg-slate-100 p-1 rounded-2xl border border-slate-200 gap-1 w-full">
         <button
           type="button"
-          onClick={() => setActiveTab("items")}
-          className={`flex-1 py-2 px-4 rounded-xl text-xs uppercase tracking-wider font-extrabold transition-all cursor-pointer ${
-            activeTab === "items"
+          onClick={() => setActiveTab("intro")}
+          className={`px-4 py-2 rounded-xl text-xs uppercase tracking-wider font-extrabold transition-all cursor-pointer ${
+            activeTab === "intro"
               ? "bg-white text-violet-700 shadow-sm"
               : "text-slate-500 hover:text-slate-800"
           }`}
         >
-          📈 Tópicos
+          📝 3. Intro Padrão
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("farmacias")}
+          className={`px-4 py-2 rounded-xl text-xs uppercase tracking-wider font-extrabold transition-all cursor-pointer ${
+            activeTab === "farmacias"
+              ? "bg-white text-violet-700 shadow-sm"
+              : "text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          💊 3.1 Farmácias
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("laboratorios")}
+          className={`px-4 py-2 rounded-xl text-xs uppercase tracking-wider font-extrabold transition-all cursor-pointer ${
+            activeTab === "laboratorios"
+              ? "bg-white text-violet-700 shadow-sm"
+              : "text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          🔬 3.2 Laboratórios
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("farmacia_hospitalar")}
+          className={`px-4 py-2 rounded-xl text-xs uppercase tracking-wider font-extrabold transition-all cursor-pointer ${
+            activeTab === "farmacia_hospitalar"
+              ? "bg-white text-violet-700 shadow-sm"
+              : "text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          🏥 3.3. Farm. Hospitalar
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("remume")}
+          className={`px-4 py-2 rounded-xl text-xs uppercase tracking-wider font-extrabold transition-all cursor-pointer ${
+            activeTab === "remume"
+              ? "bg-white text-violet-700 shadow-sm"
+              : "text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          📋 3.4. Remume/CFT
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("outras_irregularidades")}
+          className={`px-4 py-2 rounded-xl text-xs uppercase tracking-wider font-extrabold transition-all cursor-pointer ${
+            activeTab === "outras_irregularidades"
+              ? "bg-white text-violet-700 shadow-sm"
+              : "text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          ⚠️ 3.5. Outras Irreg.
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("conclusao_especifica")}
+          className={`px-4 py-2 rounded-xl text-xs uppercase tracking-wider font-extrabold transition-all cursor-pointer ${
+            activeTab === "conclusao_especifica"
+              ? "bg-white text-violet-700 shadow-sm"
+              : "text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          🎓 4. Conclusão
         </button>
         <button
           type="button"
           onClick={() => setActiveTab("variables")}
-          className={`flex-1 py-2 px-4 rounded-xl text-xs uppercase tracking-wider font-extrabold transition-all cursor-pointer ${
+          className={`px-4 py-2 rounded-xl text-xs uppercase tracking-wider font-extrabold transition-all cursor-pointer ${
             activeTab === "variables"
               ? "bg-white text-violet-700 shadow-sm"
               : "text-slate-500 hover:text-slate-800"
@@ -307,15 +427,30 @@ export default function GeneralEvalConfig() {
                     </div>
                   </div>
 
-                  <label className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      checked={editingItem.defaultChecked || false}
-                      onChange={e => setEditingItem({ ...editingItem, defaultChecked: e.target.checked })}
-                      className="w-4 h-4 rounded text-violet-600 focus:ring-violet-500"
-                    />
-                    <span className="text-sm font-bold text-slate-700">Deixar marcado por padrão</span>
-                  </label>
+                  <div className="flex flex-col gap-3">
+                    <label className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={editingItem.defaultChecked || false}
+                        onChange={e => setEditingItem({ ...editingItem, defaultChecked: e.target.checked })}
+                        className="w-4 h-4 rounded text-violet-600 focus:ring-violet-500"
+                      />
+                      <span className="text-sm font-bold text-slate-700">Deixar marcado por padrão</span>
+                    </label>
+
+                    <label className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={editingItem.isHidden || false}
+                        onChange={e => setEditingItem({ ...editingItem, isHidden: e.target.checked })}
+                        className="w-4 h-4 rounded text-rose-600 focus:ring-rose-500"
+                      />
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold text-slate-700">Ocultar Tópico</span>
+                        <span className="text-[10px] text-slate-500">Se marcado, o tópico não aparecerá na tela do Relatório Geral. Caso também seja padrão, continuará sendo impresso pelo sistema.</span>
+                      </div>
+                    </label>
+                  </div>
                   
                   <div className="flex justify-end pt-2">
                      <button type="submit" className="bg-violet-600 hover:bg-violet-700 text-white font-extrabold text-sm uppercase tracking-widest px-6 py-3 rounded-xl transition-all shadow-md">
@@ -369,20 +504,94 @@ export default function GeneralEvalConfig() {
                   </div>
 
                   <div>
-                     <label className="block text-sm font-extrabold uppercase tracking-widest text-slate-500 mb-1.5 ml-1">Modelo de Formatação (Format Pattern)</label>
-                     <input 
-                        value={editingVariable.formatPattern || ""}
-                        onChange={e => setEditingVariable({ ...editingVariable, formatPattern: e.target.value })}
-                        className="w-full bg-slate-50 border border-slate-200 focus:border-violet-500 rounded-xl px-4 py-3 text-sm text-slate-800 font-medium outline-none"
-                        placeholder="Ex: Equipamento {nome} (Marca {marca}) na cor {cor}"
-                     />
+                     <label className="block text-sm font-extrabold uppercase tracking-widest text-slate-500 mb-1.5 ml-1">Tipo de Variável</label>
+                     <select
+                        value={editingVariable.type || "table"}
+                        onChange={e => setEditingVariable({ ...editingVariable, type: e.target.value as "text" | "table" })}
+                        className="w-full bg-slate-50 border border-slate-200 focus:border-violet-500 rounded-xl px-4 py-3 text-sm text-slate-800 font-bold outline-none cursor-pointer"
+                     >
+                        <option value="text">Variável de Texto Simples</option>
+                        <option value="table">Tabela / Lista de Registros</option>
+                        <option value="condition">Condição Lógica (SE)</option>
+                     </select>
                      <p className="text-[10.5px] text-slate-400 mt-1.5 leading-relaxed ml-1">
-                       Define o formato de cada registro preenchido no relatório final. Utilize as chaves <code>{"{nome_do_campo}"} </code> correspondentes ao campos cadastrados abaixo.
+                       Textos simples são substituídos diretamente no relatório. Tabelas criam uma lista de registros nos formulários com sub-campos. Condições lógicas avaliam outras variáveis.
                      </p>
                   </div>
 
-                  {/* Fields list in modal */}
-                  <div className="bg-slate-50 p-4 border border-slate-200 rounded-2xl space-y-3">
+                  {editingVariable.type === "condition" && (
+                    <div className="bg-amber-50/50 p-4 border border-amber-200/50 rounded-2xl space-y-4">
+                       <p className="text-[11px] text-amber-700 font-medium">Configure a condição lógica. O relatório exibirá o "Texto Verdadeiro" se a condição for atendida, ou o "Texto Falso" caso contrário.</p>
+                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                             <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500 mb-1 ml-1">Variável de Referência</label>
+                             <input 
+                                value={editingVariable.conditionRefVar || ""}
+                                onChange={e => setEditingVariable({ ...editingVariable, conditionRefVar: e.target.value })}
+                                className="w-full bg-white border border-slate-200 focus:border-violet-500 rounded-xl px-3 py-2 text-sm text-slate-800 outline-none"
+                                placeholder="[MUNICIPIO] ou LABS_INFRA"
+                             />
+                          </div>
+                          <div>
+                             <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500 mb-1 ml-1">Operador</label>
+                             <select 
+                                value={editingVariable.conditionOperator || "equals"}
+                                onChange={e => setEditingVariable({ ...editingVariable, conditionOperator: e.target.value as any })}
+                                className="w-full bg-white border border-slate-200 focus:border-violet-500 rounded-xl px-3 py-2 text-sm text-slate-800 outline-none cursor-pointer"
+                             >
+                                <option value="equals">Igual a (=)</option>
+                                <option value="greater_than">Maior que (&gt;)</option>
+                                <option value="less_than">Menor que (&lt;)</option>
+                             </select>
+                          </div>
+                          <div className="sm:col-span-2">
+                             <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500 mb-1 ml-1">Valor Alvo</label>
+                             <input 
+                                value={editingVariable.conditionTargetValue || ""}
+                                onChange={e => setEditingVariable({ ...editingVariable, conditionTargetValue: e.target.value })}
+                                className="w-full bg-white border border-slate-200 focus:border-violet-500 rounded-xl px-3 py-2 text-sm text-slate-800 outline-none"
+                                placeholder="MANAUS ou 0"
+                             />
+                          </div>
+                          <div className="sm:col-span-2">
+                             <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500 mb-1 ml-1">Texto se Verdadeiro</label>
+                             <textarea 
+                                value={editingVariable.conditionTrueText || ""}
+                                onChange={e => setEditingVariable({ ...editingVariable, conditionTrueText: e.target.value })}
+                                className="w-full bg-white border border-slate-200 focus:border-emerald-500 rounded-xl px-3 py-2 text-sm text-slate-800 outline-none min-h-[80px]"
+                                placeholder="Insira o texto que aparecerá se a condição for verdadeira..."
+                             />
+                          </div>
+                          <div className="sm:col-span-2">
+                             <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500 mb-1 ml-1">Texto se Falso</label>
+                             <textarea 
+                                value={editingVariable.conditionFalseText || ""}
+                                onChange={e => setEditingVariable({ ...editingVariable, conditionFalseText: e.target.value })}
+                                className="w-full bg-white border border-slate-200 focus:border-rose-500 rounded-xl px-3 py-2 text-sm text-slate-800 outline-none min-h-[80px]"
+                                placeholder="Insira o texto que aparecerá se a condição for falsa..."
+                             />
+                          </div>
+                       </div>
+                    </div>
+                  )}
+
+                  {(!editingVariable.type || editingVariable.type === "table") && (
+                    <>
+                      <div>
+                         <label className="block text-sm font-extrabold uppercase tracking-widest text-slate-500 mb-1.5 ml-1">Modelo de Formatação (Format Pattern)</label>
+                         <input 
+                            value={editingVariable.formatPattern || ""}
+                            onChange={e => setEditingVariable({ ...editingVariable, formatPattern: e.target.value })}
+                            className="w-full bg-slate-50 border border-slate-200 focus:border-violet-500 rounded-xl px-4 py-3 text-sm text-slate-800 font-medium outline-none"
+                            placeholder="Ex: Equipamento {nome} (Marca {marca}) na cor {cor}"
+                         />
+                         <p className="text-[10.5px] text-slate-400 mt-1.5 leading-relaxed ml-1">
+                           Define o formato de cada registro preenchido no relatório final. Utilize as chaves <code>{"{nome_do_campo}"} </code> correspondentes ao campos cadastrados abaixo.
+                         </p>
+                      </div>
+
+                      {/* Fields list in modal */}
+                      <div className="bg-slate-50 p-4 border border-slate-200 rounded-2xl space-y-3">
                      <div className="flex items-center justify-between">
                        <span className="text-xs font-extrabold uppercase tracking-wider text-slate-600 block">Campos da Variável</span>
                        <button
@@ -458,6 +667,8 @@ export default function GeneralEvalConfig() {
                        )}
                      </div>
                   </div>
+                  </>
+                  )}
                   
                   <div className="flex justify-end pt-2 items-center gap-4">
                      {error && (
@@ -475,20 +686,57 @@ export default function GeneralEvalConfig() {
          </div>
       )}
 
+      {/* RENDER INTRO TAB VIEW */}
+      {activeTab === "intro" && (
+        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs">
+          <div className="mb-6 pb-4 border-b border-slate-100">
+             <h3 className="font-extrabold text-sm uppercase tracking-widest text-slate-900 flex items-center">
+                <PenSquare className="w-4 h-4 text-violet-600 mr-2" />
+                Texto de Introdução Padrão
+             </h3>
+             <p className="text-sm text-slate-500 mt-1">Este texto será usado como introdução para a Avaliação Geral de todos os relatórios.</p>
+          </div>
+          <div className="space-y-4">
+             <textarea 
+                value={introText}
+                onChange={e => setIntroText(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 focus:border-violet-500 rounded-xl px-4 py-3 text-sm text-slate-800 font-medium outline-none min-h-[300px] resize-y"
+                placeholder="Insira o texto de introdução..."
+             />
+             <div className="mt-2 text-xs text-slate-500 bg-slate-50 p-2.5 rounded-lg border border-slate-200 px-4">
+               <strong>Dica:</strong> Utilize <code>[MUNICIPIO]</code> e <code>[QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO]</code> para inserir valores dinamicamente.
+             </div>
+             <div className="flex justify-end pt-2">
+                <button 
+                  onClick={handleSaveIntro}
+                  className="bg-violet-600 hover:bg-violet-700 text-white font-extrabold text-sm uppercase tracking-widest px-6 py-3 rounded-xl transition-all shadow-md cursor-pointer"
+                >
+                   Salvar Introdução
+                </button>
+             </div>
+          </div>
+        </div>
+      )}
+
       {/* RENDER TOPICS TAB VIEW */}
-      {activeTab === "items" && (
+      {(["farmacias", "laboratorios", "farmacia_hospitalar", "remume", "outras_irregularidades", "conclusao_especifica"].includes(activeTab)) && (
         <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs">
            <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
               <div>
                 <h3 className="font-extrabold text-sm uppercase tracking-widest text-slate-900 flex items-center">
                    <ListChecks className="w-4 h-4 text-violet-600 mr-2" />
-                   Itens da Avaliação Geral
+                   {activeTab === "farmacias" && "3.1 FARMÁCIAS E DROGARIAS"}
+                   {activeTab === "laboratorios" && "3.2 LABORATÓRIOS"}
+                   {activeTab === "farmacia_hospitalar" && "3.3 FARMÁCIA HOSPITALAR"}
+                   {activeTab === "remume" && "3.4 REMUME, CFT E GOVERNANÇA"}
+                   {activeTab === "outras_irregularidades" && "3.5 OUTRAS IRREGULARIDADES"}
+                   {activeTab === "conclusao_especifica" && "4. DA AVALIAÇÃO ESPECÍFICA DE CADA ESTABELECIMENTO"}
                 </h3>
-                <p className="text-sm text-slate-500 mt-1">Configure os tópicos dinâmicos que os fiscais poderão selecionar para preencher o relatório.</p>
+                <p className="text-sm text-slate-500 mt-1">Configure os tópicos dinâmicos que os fiscais poderão selecionar para preencher esta seção do relatório.</p>
               </div>
               <div className="flex items-center gap-2">
                 <button
-                   onClick={() => setEditingItem({})}
+                   onClick={() => setEditingItem({ category: activeTab })}
                    className="bg-slate-900 hover:bg-violet-600 text-white font-extrabold text-sm uppercase tracking-widest px-4 py-2.5 rounded-xl transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
                 >
                    <Plus className="w-3.5 h-3.5" /> Adicionar
@@ -498,21 +746,29 @@ export default function GeneralEvalConfig() {
 
            {loadingInitial ? (
                <div className="py-10 text-center text-slate-400 font-medium text-sm font-mono">Carregando dados...</div>
-           ) : items.length === 0 ? (
+           ) : items.filter(item => (item.category === activeTab) || (!item.category && activeTab === "farmacias")).length === 0 ? (
                <div className="py-10 flex flex-col items-center justify-center text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
                   <ListChecks className="w-8 h-8 mb-2 opacity-50" />
                   <p className="text-sm font-medium">Nenhum item configurado.</p>
-                  <button onClick={() => setEditingItem({})} className="mt-4 text-sm text-violet-600 font-bold uppercase hover:underline cursor-pointer">Criar o Primeiro Item</button>
+                  <button onClick={() => setEditingItem({ category: activeTab })} className="mt-4 text-sm text-violet-600 font-bold uppercase hover:underline cursor-pointer">Criar o Primeiro Item</button>
                </div>
            ) : (
               <div className="space-y-4">
-                {items.map((item, index) => (
+                {items
+                  .filter(item => (item.category === activeTab) || (!item.category && activeTab === "farmacias"))
+                  .sort((a,b) => (a.order || 0) - (b.order || 0))
+                  .map((item, index) => (
                    <div key={item.id} className="p-4 bg-slate-50/70 border border-slate-150 rounded-2xl flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                       <div className="flex-1">
                          <div className="flex items-center gap-2">
                            <h4 className="font-extrabold text-slate-900 text-sm font-display">{index + 1}. {item.title}</h4>
                            {item.defaultChecked && (
                              <span className="text-[10px] bg-violet-100 text-violet-700 font-bold px-2 py-0.5 rounded-md uppercase">Padrão</span>
+                           )}
+                           {item.isHidden && (
+                             <span className="text-[10px] bg-rose-100 text-rose-700 font-bold px-2 py-0.5 rounded-md uppercase flex items-center gap-1 cursor-default" title="Não aparecerá no Modal do Relatório para o usuário marcar, mas se também for Padrão, sairá no documento">
+                               Oculto
+                             </span>
                            )}
                          </div>
                          {item.description && <p className="text-sm text-slate-500 mt-0.5">{item.description}</p>}
@@ -523,7 +779,7 @@ export default function GeneralEvalConfig() {
                       <div className="flex sm:flex-col gap-2 shrink-0 border-t border-slate-200 sm:border-t-0 pt-3 sm:pt-0">
                          <div className="flex gap-1">
                            <button 
-                             onClick={() => changeOrder(index, 'up')}
+                             onClick={() => changeOrder(activeTab, index, 'up')}
                              disabled={index === 0}
                              className="flex-1 flex items-center justify-center p-2 bg-white text-slate-400 border border-slate-200 hover:text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-all cursor-pointer"
                              title="Mover para Cima"
@@ -531,8 +787,8 @@ export default function GeneralEvalConfig() {
                              <ArrowUp className="w-4 h-4" />
                            </button>
                            <button 
-                             onClick={() => changeOrder(index, 'down')}
-                             disabled={index === items.length - 1}
+                             onClick={() => changeOrder(activeTab, index, 'down')}
+                             disabled={index === items.filter(i => (i.category === activeTab) || (!i.category && activeTab === "farmacias")).length - 1}
                              className="flex-1 flex items-center justify-center p-2 bg-white text-slate-400 border border-slate-200 hover:text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-all cursor-pointer"
                              title="Mover para Baixo"
                            >
@@ -570,8 +826,9 @@ export default function GeneralEvalConfig() {
 
       {/* RENDER VARIABLES TAB VIEW */}
       {activeTab === "variables" && (
-        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs">
-           <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
+        <div className="space-y-6">
+          <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs">
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
               <div>
                 <h3 className="font-extrabold text-sm uppercase tracking-widest text-slate-900 flex items-center">
                    <Braces className="w-4 h-4 text-violet-600 mr-2" />
@@ -655,6 +912,7 @@ export default function GeneralEvalConfig() {
                 ))}
               </div>
            )}
+        </div>
         </div>
       )}
     </div>

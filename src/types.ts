@@ -87,6 +87,8 @@ export interface EvalItem {
   paragraph: string;
   order: number;
   defaultChecked?: boolean;
+  category?: string;
+  isHidden?: boolean;
 }
 
 export interface EvalVariableField {
@@ -100,5 +102,13 @@ export interface EvalVariable {
   name: string;
   formatPattern: string; // e.g. "Laboratório {nome} (CNPJ {cnpj})"
   fields: EvalVariableField[];
+  type?: "text" | "table" | "condition"; // type of the variable
+  
+  // Condições
+  conditionRefVar?: string;
+  conditionOperator?: "equals" | "greater_than" | "less_than";
+  conditionTargetValue?: string;
+  conditionTrueText?: string;
+  conditionFalseText?: string;
 }
 

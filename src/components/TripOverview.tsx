@@ -20,9 +20,10 @@ import {
   Activity,
   FileText,
   Plus,
-  Trash2
+  Trash2,
+  PenSquare
 } from "lucide-react";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, getDocs, doc, getDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { Estabelecimento, TermoSanitario, EvalItem, EvalVariable } from "../types";
 import { motion, AnimatePresence } from "motion/react";
@@ -41,6 +42,7 @@ export default function TripOverview({ estabelecimentos, termos }: TripOverviewP
   const [travelFiscais, setTravelFiscais] = useState<string>("");
   const [travelPeriod, setTravelPeriod] = useState<string>("15/05/2026 a 22/05/2026");
   const [includeClosed, setIncludeClosed] = useState<boolean>(false);
+  const [autoCorrectText, setAutoCorrectText] = useState<boolean>(false);
   const [dateFormat, setDateFormat] = useState<"apenas_data" | "data_hora" | "sem_data">("apenas_data");
 
   React.useEffect(() => {
@@ -72,6 +74,7 @@ export default function TripOverview({ estabelecimentos, termos }: TripOverviewP
 
   // 3. DA AVALIAÇÃO GERAL Modal & Toggles State
   const [isEvalModalOpen, setIsEvalModalOpen] = useState(false);
+  const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
   const [evalItems, setEvalItems] = useState<Record<string, boolean>>({
     hasFaltaReceituario: false,
     hasDeficienciaInjetaveis: false,
@@ -89,14 +92,16 @@ export default function TripOverview({ estabelecimentos, termos }: TripOverviewP
 
   const [dbEvalItems, setDbEvalItems] = useState<EvalItem[]>([]);
   const [dbEvalVariables, setDbEvalVariables] = useState<EvalVariable[]>([]);
+  const [dbEvalIntroText, setDbEvalIntroText] = useState<string>("");
   const [customVariablesData, setCustomVariablesData] = useState<Record<string, Record<string, string>[]>>({});
 
   React.useEffect(() => {
     const fetchDbParams = async () => {
       try {
-        const [itemsQs, varsQs] = await Promise.all([
+        const [itemsQs, varsQs, introDoc] = await Promise.all([
            getDocs(collection(db, "evaluation_items")),
-           getDocs(collection(db, "evaluation_variables"))
+           getDocs(collection(db, "evaluation_variables")),
+           getDoc(doc(db, "evaluation_intro", "default"))
         ]);
         
         const list: EvalItem[] = [];
@@ -107,6 +112,12 @@ export default function TripOverview({ estabelecimentos, termos }: TripOverviewP
         const varsList: EvalVariable[] = [];
         varsQs.forEach((d) => varsList.push({ id: d.id, ...d.data() } as EvalVariable));
         setDbEvalVariables(varsList);
+
+        if (introDoc.exists() && introDoc.data().text) {
+           setDbEvalIntroText(introDoc.data().text);
+        } else {
+           setDbEvalIntroText(`Como é sabido, é de competência do Conselho Regional de Farmácia a fiscalização do exercício da profissão farmacêutica no Estado do Amazonas, visando resguardar o cumprimento da legislação vigente e, indiretamente, atuar na promoção da saúde em todo Estado.\n\nNo Município de [MUNICIPIO] foram realizadas [QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO] inspeções técnicas em estabelecimentos farmacêuticos privados e assistência pública do SUS, de modo a mensurar a conformidade sanitária nas ações locais.\n\nPor fim, é de fundamental importância que as autoridades sanitárias intensifiquem a fiscalização nos estabelecimentos citados, a fim de coibir as irregularidades sanitárias que podem comprometer a saúde da população e garantir que as normas e regulamentações sejam cumpridas, assegurando a qualidade dos serviços prestados e a segurança dos pacientes.`);
+        }
 
         // Populate evalItems with defaultChecked ones
 
@@ -260,50 +271,194 @@ export default function TripOverview({ estabelecimentos, termos }: TripOverviewP
     const paragraphs: string[] = [];
 
     // Base Intro
-    paragraphs.push(
-      `Como é sabido, é de competência do Conselho Regional de Farmácia a fiscalização do exercício da profissão farmacêutica no Estado do Amazonas, visando resguardar o cumprimento da legislação vigente e, indiretamente, atuar na promoção da saúde em todo Estado.\n\n` +
-      `No Município de ${selectedCity.toUpperCase()} foram realizadas ${cityEstabs.length} inspeções técnicas em estabelecimentos farmacêuticos privados e assistência pública do SUS, de modo a mensurar a conformidade sanitária nas ações locais.`
-    );
+    let finalIntro = dbEvalIntroText;
+    
+    const cityInscricoes = new Set(cityEstabs.map(e => e.inscricao));
+    const qtdAutos = termos.filter(t => t.estabelecimentoId && cityInscricoes.has(t.estabelecimentoId) && t.nrSeqAuto && t.nrSeqAuto !== "null" && t.nrSeqAuto.trim() !== "").length;
+
+    finalIntro = finalIntro.replace(/\[MUNICIPIO\]/g, selectedCity.toUpperCase());
+    finalIntro = finalIntro.replace(/\[QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO\]/g, cityEstabs.length.toString());
+    finalIntro = finalIntro.replace(/\[QDT_AUTOS_DE_INFRACAO_MUNIC_SELC\]/g, qtdAutos.toString());
+
+    paragraphs.push(finalIntro);
 
     const formattedLabsInfra = labsInfra.map(l => `Laboratório ${l.nome.toUpperCase()} (CNPJ ${l.cnpj})`).join(", ");
     const formattedLabsLaminas = labsLaminas.map(l => `Laboratório ${l.nome.toUpperCase()}`).join(", ");
     const formattedHospitals = hospitals.map(h => `Unidade Hospitalar de ${h.nome.toUpperCase()}`).join(" e ");
     
-    dbEvalItems.forEach(item => {
-      // For completely dynamic ones, if they are checked, add them
-      if (evalItems[item.id]) {
-         let p = item.paragraph;
-         p = p.replace(/\[LABS_INFRA\]/g, formattedLabsInfra);
-         p = p.replace(/\[LABS_LAMINAS\]/g, formattedLabsLaminas);
-         p = p.replace(/\[HOSPITAIS\]/g, formattedHospitals);
-         
-         // Process Custom Variables
-         dbEvalVariables.forEach(v => {
-            const regex = new RegExp(`\\[${v.id}\\]`, 'g');
-            if (p.match(regex)) {
-               const valuesList = customVariablesData[v.id] || [];
-               const formattedV = valuesList.map(record => {
-                  let fp = v.formatPattern;
-                  v.fields.forEach(f => {
-                     const key = `{${f.key}}`;
-                     const val = record[f.key] || "";
-                     fp = fp.split(key).join(val);
-                  });
-                  return fp;
-               }).join(", ");
-               p = p.replace(regex, formattedV);
-            }
-         });
+    // Group into categories
+    const baseCategories = [
+      { id: "farmacias", titleBase: "FARMÁCIAS E DROGARIAS" },
+      { id: "laboratorios", titleBase: "LABORATÓRIOS" },
+      { id: "farmacia_hospitalar", titleBase: "FARMÁCIA HOSPITALAR" },
+      { id: "remume", titleBase: "REMUME, CFT E GOVERNANÇA DA ASSISTÊNCIA FARMACÊUTICA" },
+      { id: "outras_irregularidades", titleBase: "OUTRAS IRREGULARIDADES SANITÁRIAS RELEVANTES" },
+      { id: "conclusao_especifica", titleBase: "DA AVALIAÇÃO ESPECÍFICA DE CADA ESTABELECIMENTO" }
+    ];
 
-         paragraphs.push(p);
+    let subIndex = 1;
+
+    baseCategories.forEach(cat => {
+      const isConclusao = cat.id === "conclusao_especifica";
+      const catItems = dbEvalItems.filter(item => (item.category === cat.id) || (!item.category && cat.id === "farmacias"))
+        .filter(item => evalItems[item.id]);
+
+      if (catItems.length > 0) {
+        if (isConclusao) {
+           paragraphs.push(`**4. ${cat.titleBase}**`);
+        } else {
+           paragraphs.push(`**3.${subIndex} ${cat.titleBase}**`);
+           subIndex++;
+        }
+        
+        catItems.forEach(item => {
+           let p = item.paragraph;
+           p = p.replace(/\[LABS_INFRA\]/g, formattedLabsInfra);
+           p = p.replace(/\[LABS_LAMINAS\]/g, formattedLabsLaminas);
+           p = p.replace(/\[HOSPITAIS\]/g, formattedHospitals);
+           
+           // Process Custom Variables (Text & Tables)
+           dbEvalVariables.forEach(v => {
+              if (v.type === "condition") return;
+              const regex = new RegExp(`\\\[${v.id}\\\]`, 'g');
+              if (p.match(regex)) {
+                 const valuesList = customVariablesData[v.id] || [];
+                 const formattedV = valuesList.map(record => {
+                    if (v.type === "text") {
+                       return record[v.fields[0]?.key || "val"] || "";
+                    }
+                    let fp = v.formatPattern || "";
+                    v.fields.forEach(f => {
+                       const key = `{${f.key}}`;
+                       const val = record[f.key] || "";
+                       fp = fp.split(key).join(val);
+                    });
+                    return fp;
+                 }).join(", ");
+                 p = p.replace(regex, formattedV);
+              }
+           });
+           
+           // Process Conditions
+           dbEvalVariables.forEach(v => {
+              if (v.type !== "condition") return;
+              const regex = new RegExp(`\\\[${v.id}\\\]`, 'g');
+              if (p.match(regex)) {
+                 // Evaluate Condition
+                 let refValueText = "";
+                 const refVarId = (v.conditionRefVar || "").replace(/[\[\]]/g, "").trim();
+                 
+                 // System variables
+                 if (refVarId === "MUNICIPIO") refValueText = selectedCity.toUpperCase();
+                 else if (refVarId === "QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO" || refVarId.includes("INSPECOES")) refValueText = cityEstabs.length.toString();
+                 else if (refVarId === "QDT_AUTOS_DE_INFRACAO_MUNIC_SELC" || refVarId.includes("AUTOS")) {
+                    const cityInscricoes = new Set(cityEstabs.map(e => e.inscricao));
+                    const num = termos.filter(t => t.estabelecimentoId && cityInscricoes.has(t.estabelecimentoId) && t.nrSeqAuto && t.nrSeqAuto !== "null" && t.nrSeqAuto.trim() !== "").length;
+                    refValueText = num.toString();
+                 }
+                 else if (customVariablesData[refVarId]) {
+                    const refVDef = dbEvalVariables.find(d => d.id === refVarId);
+                    if (refVDef && refVDef.type === "text") {
+                       refValueText = customVariablesData[refVarId]?.[0]?.[refVDef.fields[0]?.key || "val"] || "";
+                    } else {
+                       refValueText = customVariablesData[refVarId].length.toString();
+                    }
+                 }
+                 
+                 let evalResult = false;
+                 const target = (v.conditionTargetValue || "").trim();
+                 let numRef = parseFloat(refValueText);
+                 let numTarget = parseFloat(target);
+                 
+                 if (v.conditionOperator === "greater_than") {
+                    evalResult = !isNaN(numRef) && !isNaN(numTarget) ? numRef > numTarget : refValueText > target;
+                 } else if (v.conditionOperator === "less_than") {
+                    evalResult = !isNaN(numRef) && !isNaN(numTarget) ? numRef < numTarget : refValueText < target;
+                 } else { // equals
+                    evalResult = refValueText.toString().toLowerCase() === target.toLowerCase();
+                 }
+                 
+                 const replacementText = evalResult ? (v.conditionTrueText || "") : (v.conditionFalseText || "");
+                 p = p.replace(regex, replacementText);
+              }
+           });
+           
+           paragraphs.push(p);
+        });
       }
     });
 
     let joined = paragraphs.join("\n\n");
     
+    // Also process conditions inside `finalIntro` before returning, but we already added finalIntro to paragraphs!
+    // Wait, the variables inside finalIntro were not processed by the condition loop because it was pushed at index 0.
+    // Let's re-run condition loop over the entire `joined` text just to be safe!
+    dbEvalVariables.forEach(v => {
+       if (v.type !== "condition") return;
+       const regex = new RegExp(`\\\[${v.id}\\\]`, 'g');
+       if (joined.match(regex)) {
+          let refValueText = "";
+          const refVarId = (v.conditionRefVar || "").replace(/[\[\]]/g, "").trim();
+          
+          if (refVarId === "MUNICIPIO") refValueText = selectedCity.toUpperCase();
+          else if (refVarId === "QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO" || refVarId.includes("INSPECOES")) refValueText = cityEstabs.length.toString();
+          else if (refVarId === "QDT_AUTOS_DE_INFRACAO_MUNIC_SELC" || refVarId.includes("AUTOS")) {
+             const cityInscricoes = new Set(cityEstabs.map(e => e.inscricao));
+             const num = termos.filter(t => t.estabelecimentoId && cityInscricoes.has(t.estabelecimentoId) && t.nrSeqAuto && t.nrSeqAuto !== "null" && t.nrSeqAuto.trim() !== "").length;
+             refValueText = num.toString();
+          }
+          else if (customVariablesData[refVarId]) {
+             const refVDef = dbEvalVariables.find(d => d.id === refVarId);
+             if (refVDef && refVDef.type === "text") {
+                refValueText = customVariablesData[refVarId]?.[0]?.[refVDef.fields[0]?.key || "val"] || "";
+             } else {
+                refValueText = customVariablesData[refVarId].length.toString();
+             }
+          }
+          
+          let evalResult = false;
+          const target = (v.conditionTargetValue || "").trim();
+          let numRef = parseFloat(refValueText);
+          let numTarget = parseFloat(target);
+          
+          if (v.conditionOperator === "greater_than") {
+             evalResult = !isNaN(numRef) && !isNaN(numTarget) ? numRef > numTarget : refValueText > target;
+          } else if (v.conditionOperator === "less_than") {
+             evalResult = !isNaN(numRef) && !isNaN(numTarget) ? numRef < numTarget : refValueText < target;
+          } else { // equals
+             evalResult = refValueText.toString().toLowerCase() === target.toLowerCase();
+          }
+          
+          const replacementText = evalResult ? (v.conditionTrueText || "") : (v.conditionFalseText || "");
+          joined = joined.replace(regex, replacementText);
+       }
+    });
+    
+    // Process text Variables for joined text as well
+    dbEvalVariables.forEach(v => {
+       if (v.type === "condition") return;
+       const regex = new RegExp(`\\\[${v.id}\\\]`, 'g');
+       if (joined.match(regex)) {
+          const valuesList = customVariablesData[v.id] || [];
+          const formattedV = valuesList.map(record => {
+             if (v.type === "text") {
+                return record[v.fields[0]?.key || "val"] || "";
+             }
+             let fp = v.formatPattern || "";
+             v.fields.forEach(f => {
+                const key = `{${f.key}}`;
+                const val = record[f.key] || "";
+                fp = fp.split(key).join(val);
+             });
+             return fp;
+          }).join(", ");
+          joined = joined.replace(regex, formattedV);
+       }
+    });
+
     const fiscalNames = travelFiscais.split(" / ");
     fiscalNames.forEach((name, i) => {
-       const regex = new RegExp(`\\[NOME_FISCAL${i + 1}\\]`, 'g');
+       const regex = new RegExp(`\\\[NOME_FISCAL${i + 1}\\\]`, 'g');
        joined = joined.replace(regex, name.trim());
     });
     joined = joined.replace(/\[PERIODO_DE_FISCALIZAÇÃO\]/g, travelPeriod || "NÃO INFORMADO");
@@ -333,7 +488,26 @@ export default function TripOverview({ estabelecimentos, termos }: TripOverviewP
       intimados_autuados: "Estabelecimentos Intimados e Autuados"
     };
 
-    const compiledText = getCompiledEvaluationText();
+    let compiledText = getCompiledEvaluationText();
+    
+    if (autoCorrectText) {
+      showLoading("Revisando texto com IA (Isso pode demorar alguns segundos)...");
+      try {
+        const response = await fetch("/api/gemini/correct", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: compiledText })
+        });
+        if (response.ok) {
+           const data = await response.json();
+           if (data.correctedText) compiledText = data.correctedText;
+        } else {
+           console.error("Falha ao corrigir com IA");
+        }
+      } catch (err) {
+        console.error("Failed to auto-correct text", err);
+      }
+    }
 
     showLoading("Gerando documento...");
     try {
@@ -640,6 +814,35 @@ export default function TripOverview({ estabelecimentos, termos }: TripOverviewP
                 </div>
               </div>
 
+              {/* Opção: Corrigir Texto Automático com IA */}
+              <label className="bg-gradient-to-r from-violet-50 to-fuchsia-50 border-2 border-violet-200 hover:border-violet-300 shadow-sm rounded-2xl p-4 flex items-center justify-between gap-4 cursor-pointer transition-all">
+                <input 
+                  type="checkbox" 
+                  className="hidden" 
+                  checked={autoCorrectText} 
+                  onChange={() => setAutoCorrectText(!autoCorrectText)} 
+                />
+                <div className="space-y-1">
+                  <span className="text-sm font-extrabold text-violet-900 uppercase tracking-widest block font-display flex items-center gap-1.5">
+                    ✨ Corrigir Texto Automático
+                  </span>
+                  <p className="text-xs text-violet-600/80 font-medium leading-relaxed">
+                    Faz uma varredura com Inteligência Artificial no relatório gerado corrigindo a ortografia, espaçamento e pontuação.
+                  </p>
+                </div>
+                <div
+                  className={`w-14 h-7 rounded-full transition-all duration-300 ease-in-out relative flex items-center shrink-0 border-2 ${
+                    autoCorrectText ? "bg-violet-600 border-violet-600" : "bg-white border-violet-300"
+                  }`}
+                >
+                  <span
+                    className={`absolute bg-white w-5 h-5 rounded-full transition-transform duration-300 shadow-sm ${
+                      autoCorrectText ? "translate-x-7" : "translate-x-1"
+                    } ${!autoCorrectText && 'bg-violet-200'}`}
+                  />
+                </div>
+              </label>
+
               {/* Opção: Incluir Empresas Fechadas */}
               <label className="bg-white border-2 border-slate-200 hover:border-slate-300 shadow-sm rounded-2xl p-4 flex items-center justify-between gap-4 cursor-pointer transition-all">
                 <input 
@@ -806,6 +1009,8 @@ export default function TripOverview({ estabelecimentos, termos }: TripOverviewP
                   </p>
                 </div>
 
+
+
                 {/* Opção: Marcar Automaticamente pelo sistema */}
                 <div className="bg-violet-50/50 border border-violet-150 rounded-2xl p-4 flex items-center justify-between gap-4">
                   <div className="space-y-1">
@@ -840,100 +1045,151 @@ export default function TripOverview({ estabelecimentos, termos }: TripOverviewP
                   </button>
                 </div>
 
-                <div className="space-y-4">
+                <div className="space-y-6">
                   {/* Dynamically Fetched Items from Firestore */}
-                  {dbEvalItems.map((item, index) => {
-                    const textToSearch = `${item.title || ""} ${item.description || ""} ${item.paragraph || ""}`;
-                    const hasLabsInfra = textToSearch.includes("[LABS_INFRA]");
-                    const hasLabsLaminas = textToSearch.includes("[LABS_LAMINAS]");
-                    const hasHospitals = textToSearch.includes("[HOSPITAIS]");
-                    const isChecked = !!evalItems[item.id];
-                    const variablesInThisItem = dbEvalVariables.filter(v => textToSearch.includes(`[${v.id}]`));
-                    const hasCustomVariables = variablesInThisItem.length > 0;
+                  {["farmacias", "laboratorios", "farmacia_hospitalar", "remume", "outras_irregularidades", "conclusao_especifica"].map(cat => {
+                     const catItems = dbEvalItems.filter(item => ((item.category === cat) || (!item.category && cat === "farmacias")) && !item.isHidden);
+                     if (catItems.length === 0) return null;
+                     
+                     let catTitle = "";
+                     if (cat === "farmacias") catTitle = "3.1 FARMÁCIAS E DROGARIAS";
+                     if (cat === "laboratorios") catTitle = "3.2 LABORATÓRIOS";
+                     if (cat === "farmacia_hospitalar") catTitle = "3.3 FARMÁCIA HOSPITALAR";
+                     if (cat === "remume") catTitle = "3.4 REMUME, CFT E GOVERNANÇA";
+                     if (cat === "outras_irregularidades") catTitle = "3.5 OUTRAS IRREGULARIDADES SANITÁRIAS RELEVANTES";
+                     if (cat === "conclusao_especifica") catTitle = "4. DA AVALIAÇÃO ESPECÍFICA DE CADA ESTABELECIMENTO";
 
-                    return (
-                      <div key={item.id} className="p-4 bg-slate-55/70 border border-slate-150 border-r-4 border-r-emerald-400 hover:border-slate-300 rounded-2xl transition-colors block">
-                        <div className="flex items-start gap-3.5">
-                          <input 
-                            id={`eval-item-${item.id}`}
-                            type="checkbox" 
-                            className="mt-1 rounded text-violet-600 focus:ring-violet-500 shrink-0 h-4.5 w-4.5 cursor-pointer"
-                            checked={isChecked}
-                            onChange={(e) => setEvalItems({ ...evalItems, [item.id]: e.target.checked })}
-                          />
-                          <label htmlFor={`eval-item-${item.id}`} className="cursor-pointer flex-1 select-none">
-                            <span className="font-extrabold text-slate-900 font-display block text-sm">{index + 1}. {item.title}</span>
-                            {item.description && (
-                              <p className="text-sm text-slate-500 mt-1 leading-relaxed">
-                                {item.description}
-                              </p>
-                            )}
-                          </label>
-                        </div>
+                     return (
+                        <div key={cat} className="space-y-4">
+                           <h3 className="font-extrabold text-sm uppercase tracking-widest text-slate-800 bg-slate-100 p-2.5 rounded-lg border border-slate-200">
+                             {catTitle}
+                           </h3>
+                           {catItems.map((item, index) => {
+                              const textToSearch = `${item.title || ""} ${item.description || ""} ${item.paragraph || ""}`;
+                              const hasLabsInfra = textToSearch.includes("[LABS_INFRA]");
+                              const hasLabsLaminas = textToSearch.includes("[LABS_LAMINAS]");
+                              const hasHospitals = textToSearch.includes("[HOSPITAIS]");
+                              const isChecked = !!evalItems[item.id];
+                              const isExpanded = !!expandedItems[item.id];
+                              const variablesInThisItem = dbEvalVariables.filter(v => textToSearch.includes(`[${v.id}]`));
+                              const hasCustomVariables = variablesInThisItem.length > 0;
 
-                        {isChecked && (hasLabsInfra || hasLabsLaminas || hasHospitals || hasCustomVariables) && (
-                          <div className="mt-4 pt-4 border-t border-slate-200/60 space-y-4 animate-in fade-in duration-200">
-                            {variablesInThisItem.map(v => {
-                               const records = customVariablesData[v.id] || [];
-                               return (
-                                  <div key={v.id} className="p-3 bg-white border border-slate-200 rounded-xl space-y-3 shadow-2xs">
-                                     <div className="flex items-center justify-between">
-                                        <h5 className="text-[11px] uppercase font-black text-slate-700 tracking-wider flex items-center gap-1.5">
-                                           ⚙️ [{v.id}] - {v.name}
-                                        </h5>
-                                        <button 
-                                          type="button"
-                                          onClick={() => {
-                                            const newRec: Record<string, string> = {};
-                                            v.fields.forEach(f => newRec[f.key] = "");
-                                            setCustomVariablesData({
-                                              ...customVariablesData,
-                                              [v.id]: [...records, newRec]
-                                            });
-                                          }}
-                                          className="text-xs text-violet-600 hover:text-violet-750 font-black uppercase flex items-center gap-1 cursor-pointer"
-                                        >
-                                           <Plus className="w-3.5 h-3.5" /> Adicionar
-                                        </button>
-                                     </div>
-                                     <div className="space-y-3">
-                                        {records.map((record, idx) => (
-                                          <div key={idx} className="flex gap-2 items-start relative border-l-2 border-slate-200 pl-3">
-                                            <div className="flex-1 grid gap-2 grid-cols-1 sm:grid-cols-2">
-                                              {v.fields.map(f => (
-                                                <input 
-                                                  key={f.key}
-                                                  type="text" 
-                                                  placeholder={f.placeholder || f.label} 
-                                                  value={record[f.key] || ""} 
-                                                  onChange={(e) => {
-                                                    const newRecords = [...records];
-                                                    newRecords[idx] = { ...newRecords[idx], [f.key]: e.target.value };
-                                                    setCustomVariablesData({ ...customVariablesData, [v.id]: newRecords });
-                                                  }} 
-                                                  className="w-full text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 bg-slate-50 focus:bg-white transition-all" 
-                                                />
-                                              ))}
-                                            </div>
-                                            <button 
-                                              onClick={() => {
-                                                const newRecords = records.filter((_, i) => i !== idx);
-                                                setCustomVariablesData({ ...customVariablesData, [v.id]: newRecords });
-                                              }} 
-                                              className="p-1.5 mt-0.5 text-rose-500 hover:bg-rose-50 rounded-lg cursor-pointer shrink-0 transition-colors"
-                                              title="Remover"
-                                            >
-                                              <Trash2 className="w-3.5 h-3.5" />
-                                            </button>
-                                          </div>
-                                        ))}
-                                        {records.length === 0 && (
-                                          <p className="text-[10px] text-slate-400 italic">Nenhum {v.name.toLowerCase()} adicionado. Clique no botão acima para adicionar.</p>
+                              return (
+                                <div key={item.id} className="p-4 bg-slate-55/70 border border-slate-150 border-r-4 border-r-emerald-400 hover:border-slate-300 rounded-2xl transition-colors block">
+                                  <div className="flex items-start gap-3.5">
+                                    <input 
+                                      id={`eval-item-${item.id}`}
+                                      type="checkbox" 
+                                      className="mt-1 rounded text-violet-600 focus:ring-violet-500 shrink-0 h-4.5 w-4.5 cursor-pointer"
+                                      checked={isChecked}
+                                      onChange={(e) => setEvalItems({ ...evalItems, [item.id]: e.target.checked })}
+                                    />
+                                    <div className="flex-1 select-none">
+                                      <label htmlFor={`eval-item-${item.id}`} className="cursor-pointer">
+                                        <span className="font-extrabold text-slate-900 font-display block text-sm">{index + 1}. {item.title}</span>
+                                        {item.description && (
+                                          <p className="text-sm text-slate-500 mt-1 leading-relaxed">
+                                            {item.description}
+                                          </p>
                                         )}
-                                     </div>
+                                      </label>
+                                      
+                                      <button 
+                                        type="button" 
+                                        onClick={() => setExpandedItems({ ...expandedItems, [item.id]: !isExpanded })}
+                                        className="mt-2 text-xs font-bold text-violet-600 hover:text-violet-800 flex items-center gap-1 cursor-pointer transition-colors"
+                                      >
+                                        {isExpanded ? "Esconder Texto" : "Visualizar Texto Completo"}
+                                      </button>
+                                      
+                                      {isExpanded && (
+                                        <div className="mt-2 p-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-600 italic leading-relaxed">
+                                          {item.paragraph}
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
-                               );
-                            })}
+
+                                  {isChecked && (hasLabsInfra || hasLabsLaminas || hasHospitals || hasCustomVariables) && (
+                                    <div className="mt-4 pt-4 border-t border-slate-200/60 space-y-4 animate-in fade-in duration-200">
+                                      {variablesInThisItem.map(v => {
+                                         const records = customVariablesData[v.id] || [];
+                                         return (
+                                            <div key={v.id} className="p-3 bg-white border border-slate-200 rounded-xl space-y-3 shadow-2xs">
+                                                <div className="flex items-center justify-between">
+                                                  <h5 className="text-[11px] uppercase font-black text-slate-700 tracking-wider flex items-center gap-1.5">
+                                                     ⚙️ [{v.id}] - {v.name}
+                                                  </h5>
+                                                  {v.type !== "text" && (
+                                                    <button 
+                                                      type="button"
+                                                      onClick={() => {
+                                                        const newRec: Record<string, string> = {};
+                                                        v.fields.forEach(f => newRec[f.key] = "");
+                                                        setCustomVariablesData({
+                                                          ...customVariablesData,
+                                                          [v.id]: [...records, newRec]
+                                                        });
+                                                      }}
+                                                      className="text-xs text-violet-600 hover:text-violet-750 font-black uppercase flex items-center gap-1 cursor-pointer"
+                                                    >
+                                                       <Plus className="w-3.5 h-3.5" /> Adicionar
+                                                    </button>
+                                                  )}
+                                                </div>
+                                                {v.type !== "text" ? (
+                                                  <div className="space-y-3">
+                                                    {records.map((record, idx) => (
+                                                      <div key={idx} className="flex gap-2 items-start relative border-l-2 border-slate-200 pl-3">
+                                                        <div className="flex-1 grid gap-2 grid-cols-1 sm:grid-cols-2">
+                                                          {v.fields.map(f => (
+                                                            <input 
+                                                              key={f.key}
+                                                              type="text" 
+                                                              placeholder={f.placeholder || f.label} 
+                                                              value={record[f.key] || ""} 
+                                                              onChange={(e) => {
+                                                                const newRecords = [...records];
+                                                                newRecords[idx] = { ...newRecords[idx], [f.key]: e.target.value };
+                                                                setCustomVariablesData({ ...customVariablesData, [v.id]: newRecords });
+                                                              }} 
+                                                              className="w-full text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 bg-slate-50 focus:bg-white transition-all" 
+                                                            />
+                                                          ))}
+                                                        </div>
+                                                        <button 
+                                                          onClick={() => {
+                                                            const newRecords = records.filter((_, i) => i !== idx);
+                                                            setCustomVariablesData({ ...customVariablesData, [v.id]: newRecords });
+                                                          }} 
+                                                          className="p-1.5 mt-0.5 text-rose-500 hover:bg-rose-50 rounded-lg cursor-pointer shrink-0 transition-colors"
+                                                          title="Remover"
+                                                        >
+                                                          <Trash2 className="w-3.5 h-3.5" />
+                                                        </button>
+                                                      </div>
+                                                    ))}
+                                                    {records.length === 0 && (
+                                                      <p className="text-[10px] text-slate-400 italic">Nenhum {v.name.toLowerCase()} adicionado. Clique no botão acima para adicionar.</p>
+                                                    )}
+                                                  </div>
+                                                ) : (
+                                                  <div className="space-y-3 pt-2">
+                                                    <input 
+                                                      type="text" 
+                                                      placeholder={`Valor para ${v.name}`} 
+                                                      value={records[0]?.[v.fields[0]?.key || "val"] || ""} 
+                                                      onChange={(e) => {
+                                                        const key = v.fields[0]?.key || "val";
+                                                        setCustomVariablesData({ ...customVariablesData, [v.id]: [{ [key]: e.target.value }] });
+                                                      }} 
+                                                      className="w-full text-xs px-2.5 py-2 border border-slate-200 rounded-lg outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 bg-slate-50 focus:bg-white transition-all" 
+                                                    />
+                                                  </div>
+                                                )}
+                                             </div>
+                                          );
+                                       })}
                             
                             {hasLabsInfra && (
                               <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-3 shadow-2xs">
@@ -1083,7 +1339,10 @@ export default function TripOverview({ estabelecimentos, termos }: TripOverviewP
                           </div>
                         )}
                       </div>
-                    );
+                     );
+                           })}
+                        </div>
+                     );
                   })}
                 </div>
 
@@ -1099,7 +1358,13 @@ export default function TripOverview({ estabelecimentos, termos }: TripOverviewP
                     onClick={() => {
                       const cleared: Record<string, boolean> = {};
                       dbEvalItems.forEach(item => {
-                        cleared[item.id] = false;
+                        if (item.isHidden && item.defaultChecked) {
+                           cleared[item.id] = true;
+                        } else if (item.isHidden) {
+                           cleared[item.id] = !!evalItems[item.id];
+                        } else {
+                           cleared[item.id] = false;
+                        }
                       });
                       setEvalItems(cleared);
                     }}
