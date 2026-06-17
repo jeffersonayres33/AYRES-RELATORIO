@@ -10,19 +10,19 @@ service cloud.firestore {
     }
 
     function isSuperAdmin() {
-      return isSignedIn() && request.auth.token.email == 'jeffersonayresjefferson@gmail.com';
+      return isSignedIn() && 'email' in request.auth.token && request.auth.token.email == 'jeffersonayresjefferson@gmail.com';
     }
 
     function isAdmin() {
       return isSuperAdmin() || 
-        (isSignedIn() &&
+        (isSignedIn() && 'email' in request.auth.token &&
          exists(/databases/$(database)/documents/authorized_users/$(request.auth.token.email)) &&
          get(/databases/$(database)/documents/authorized_users/$(request.auth.token.email)).data.role == 'admin');
     }
 
     function isAuthorizedUser() {
       return isSuperAdmin() || 
-        (isSignedIn() &&
+        (isSignedIn() && 'email' in request.auth.token &&
          exists(/databases/$(database)/documents/authorized_users/$(request.auth.token.email)));
     }
 
@@ -45,19 +45,31 @@ service cloud.firestore {
       allow delete: if isAdmin() && emailId != 'jeffersonayresjefferson@gmail.com';
     }
     match /evaluation_items/{itemId} {
-      allow read: if isAuthorizedUser();
+      allow read: if true;
       allow write: if isAdmin();
     }
     match /evaluation_variables/{variableId} {
-      allow read: if isAuthorizedUser();
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /evaluation_intro/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /fiscal_name_mappings/{mappingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /fiscal_crf_mappings/{mappingId} {
+      allow read: if true;
       allow write: if isAdmin();
     }
     match /settings/{document=**} {
-      allow read: if isAuthorizedUser();
+      allow read: if true;
       allow write: if isAdmin();
     }
     match /templateVariables/{variableId} {
-      allow read: if isAuthorizedUser();
+      allow read: if true;
       allow write: if isAdmin();
     }
   }

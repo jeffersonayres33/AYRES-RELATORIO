@@ -95,6 +95,8 @@ export interface EvalVariableField {
   key: string;
   label: string;
   placeholder?: string;
+  inputType?: "text" | "radio";
+  options?: string[];
 }
 
 export interface EvalVariable {
@@ -106,7 +108,7 @@ export interface EvalVariable {
   
   // Condições
   conditionRefVar?: string;
-  conditionOperator?: "equals" | "greater_than" | "less_than";
+  conditionOperator?: "equals" | "not_equals" | "greater_than" | "less_than" | "greater_equals" | "less_equals";
   conditionTargetValue?: string;
   conditionTrueText?: string;
   conditionFalseText?: string;

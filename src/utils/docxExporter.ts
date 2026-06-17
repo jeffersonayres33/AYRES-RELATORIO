@@ -12,11 +12,203 @@ import {
   HeightRule
 } from "docx";
 import { Estabelecimento, TermoSanitario } from "../types";
-
 import { DEFAULT_FULL_REPORT_TEMPLATE } from "./fullReportTemplate";
+import { saveAs } from "file-saver";
+import PizZip from "pizzip";
+import Docxtemplater from "docxtemplater";
+import { doc, getDoc, collection, getDocs, db } from "../lib/supabase";
 
-// Helper for standard paragraphs - Defaulting to Times New Roman, 12pt (size 24), pure black, left aligned
-const createParagraph = (text: string, options: { 
+export interface ExportMunicipalProps {
+  selectedCity: string;
+  filterLabel: string;
+  filteredEstabs: Estabelecimento[];
+  termos: TermoSanitario[];
+  customAvaliacaoGeralText?: string;
+  dateFormat?: 'apenas_data' | 'data_hora' | 'sem_data';
+  travelPeriod?: string;
+  travelFiscais?: string;
+  // Resolved mapping results
+  nomeFiscalStr?: string;
+  crfFiscalStr?: string;
+  sexoFiscalStr?: string;
+  customTemplateVariables?: Record<string, string>;
+}
+
+// Global variable replacement helper
+export const replaceVarMatches = (
+  text: string,
+  selectedCity: string,
+  travelPeriod: string,
+  nomeFiscalStr: string,
+  crfFiscalStr: string,
+  sexoFiscalStr: string,
+  customVars: Record<string, string> = {},
+  filteredEstabsCount?: number
+): string => {
+  if (!text) return "";
+  let res = text;
+  
+  const dateFormatted = new Date().toLocaleDateString('pt-BR', { year: 'numeric', month: 'long', day: 'numeric' });
+  const localDataStr = `${selectedCity}, ${dateFormatted}`;
+  const countStr = filteredEstabsCount !== undefined ? String(filteredEstabsCount) : "0";
+
+  res = res.replace(/\[MUNICIPIO\]/gi, selectedCity || "")
+           .replace(/\[CIDADE\]/gi, selectedCity || "")
+           .replace(/<cidade>/gi, selectedCity || "")
+           .replace(/<municipio>/gi, selectedCity || "")
+           .replace(/\[DATA\]/gi, dateFormatted)
+           .replace(/\[DADOS\]/gi, dateFormatted)
+           .replace(/<data>/gi, dateFormatted)
+           .replace(/<dados>/gi, dateFormatted)
+           .replace(/\[LOCAL_DATA_POR_EXTENSO\]/gi, localDataStr)
+           .replace(/\[PERIODO_DE_FISCALIZAÇÃO\]/gi, travelPeriod || "NÃO INFORMADO")
+           .replace(/\[PERIODO_DE_FISCALIZACAO\]/gi, travelPeriod || "NÃO INFORMADO")
+           .replace(/\[PERIODO_VIAGEM\]/gi, travelPeriod || "NÃO INFORMADO")
+           .replace(/\[NOME_FISCAL\]/gi, nomeFiscalStr || "")
+           .replace(/\[CRF_FISCAL\]/gi, crfFiscalStr || "")
+           .replace(/\[SEXO_FISCAL\]/gi, sexoFiscalStr || "")
+           .replace(/<fiscal>/gi, nomeFiscalStr || "")
+           .replace(/<inspetor>/gi, nomeFiscalStr || "")
+           .replace(/\[QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO\]/gi, countStr)
+           .replace(/\[QUANTIDADE_INSPECOES_NO_MUNICIPIO_SELECIONADO\]/gi, countStr)
+           .replace(/\[QUANTIDADE_EMPRESAS_NO_MUNICIPIO_SELECIONADO\]/gi, countStr);
+
+  // Replacement of admin custom variables [KEYS]
+  Object.keys(customVars).forEach(key => {
+    const keyWithBrackets = `[${key}]`;
+    const regex = new RegExp(keyWithBrackets.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'g');
+    if (res.includes(keyWithBrackets) || res.search(regex) !== -1) {
+      let val = customVars[key] || "";
+      val = val.replace(/<cidade>/gi, selectedCity || "")
+               .replace(/<municipio>/gi, selectedCity || "")
+               .replace(/\[CIDADE\]/gi, selectedCity || "")
+               .replace(/\[MUNICIPIO\]/gi, selectedCity || "")
+               .replace(/\[DATA\]/gi, dateFormatted)
+               .replace(/\[DADOS\]/gi, dateFormatted)
+               .replace(/\[PERIODO_DE_FISCALIZAÇÃO\]/gi, travelPeriod || "NÃO INFORMADO")
+               .replace(/\[NOME_FISCAL\]/gi, nomeFiscalStr || "")
+               .replace(/\[CRF_FISCAL\]/gi, crfFiscalStr || "")
+               .replace(/\[SEXO_FISCAL\]/gi, sexoFiscalStr || "")
+               .replace(/\[QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO\]/gi, countStr)
+               .replace(/\[QUANTIDADE_INSPECOES_NO_MUNICIPIO_SELECIONADO\]/gi, countStr)
+               .replace(/\[QUANTIDADE_EMPRESAS_NO_MUNICIPIO_SELECIONADO\]/gi, countStr);
+      res = res.replace(regex, val);
+    }
+  });
+
+  return res;
+};
+
+// Global DB mapping loader
+export const loadMappingsAndCustomVars = async (selectedCity: string, travelPeriod: string, travelFiscais: string) => {
+  const customTemplateVariables: Record<string, string> = {};
+  try {
+    const varsSnap = await getDocs(collection(db, "templateVariables"));
+    varsSnap.forEach(v => {
+      const data = v.data();
+      if (data.name && data.value !== undefined) {
+        customTemplateVariables[data.name] = data.value;
+      }
+    });
+  } catch (e) {
+    console.error("Erro ao carregar variaveis customizadas", e);
+  }
+
+  const crfMappings: {namePart: string; crfValue: string}[] = [];
+  try {
+    const mappingsSnap = await getDocs(collection(db, "fiscal_crf_mappings"));
+    mappingsSnap.forEach(d => {
+      const data = d.data() || {};
+      const namePartVal = data.namePart ?? data.namepart ?? data.name_part ?? data.nome_part ?? data.nome ?? data.name ?? "";
+      const crfValueVal = data.crfValue ?? data.crfvalue ?? data.crf_value ?? data.crf ?? data.valor ?? "";
+      if (namePartVal && crfValueVal) {
+        crfMappings.push({ 
+          namePart: String(namePartVal).trim().toUpperCase(), 
+          crfValue: String(crfValueVal).trim() 
+        });
+      }
+    });
+  } catch (e) {
+    console.error("Erro ao carregar mapeamentos de CRF", e);
+  }
+
+  const getCrfForName = (name: string) => {
+    const upperName = name.toUpperCase();
+    for (const m of crfMappings) {
+      if (upperName.includes(m.namePart)) {
+        return m.crfValue;
+      }
+    }
+    // Deep defaults
+    if (upperName.includes("JEFFERSON")) return "CRF/AM 05566";
+    if (upperName.includes("RAFAELLA")) return "CRF/AM 01683";
+    if (upperName.includes("DAIANE")) return "CRF/AM 04510";
+    if (upperName.includes("GLAUCIANE")) return "CRF/AM 04732";
+    return "NÃO INFORMADO";
+  };
+
+  const nameMappings: {namePart: string; fullNameValue: string; gender?: string}[] = [];
+  try {
+    const mappingsSnap = await getDocs(collection(db, "fiscal_name_mappings"));
+    mappingsSnap.forEach(d => {
+      const data = d.data() || {};
+      const namePartVal = data.namePart ?? data.namepart ?? data.name_part ?? data.nome_part ?? data.nome ?? data.name ?? "";
+      const fullNameValueVal = data.fullNameValue ?? data.fullnamevalue ?? data.full_name_value ?? data.fullName ?? data.fullname ?? data.nome_completo ?? data.nomeCompleto ?? "";
+      const genderVal = data.gender ?? data.sexo ?? "Masculino";
+
+      if (namePartVal && fullNameValueVal) {
+        nameMappings.push({ 
+          namePart: String(namePartVal).trim().toUpperCase(), 
+          fullNameValue: String(fullNameValueVal).trim().toUpperCase(), 
+          gender: (genderVal === "Feminino" || genderVal === "feminino" || genderVal === "female" || genderVal === "F") ? "Feminino" : "Masculino"
+        });
+      }
+    });
+  } catch (e) {
+    console.error("Erro ao carregar mapeamentos de Nome", e);
+  }
+
+  const getFullNameForName = (name: string) => {
+    const upperName = name.toUpperCase();
+    for (const m of nameMappings) {
+      if (upperName.includes(m.namePart)) {
+        return m.fullNameValue;
+      }
+    }
+    return name;
+  };
+
+  const getGenderForName = (name: string) => {
+    const upperName = name.toUpperCase();
+    for (const m of nameMappings) {
+      if (upperName.includes(m.namePart)) {
+        return m.gender === "Feminino" ? "Fiscal Farmacêutica" : "Fiscal Farmacêutico";
+      }
+    }
+    return "Fiscal Farmacêutico(a)";
+  };
+
+  let processedTravelFiscais = travelFiscais || "CRF/AM (Fiscais)";
+  const initialNames = processedTravelFiscais.split(" / ");
+  processedTravelFiscais = initialNames.map(f => getFullNameForName(f.trim())).join(" / ");
+
+  const nomeFiscalStr = processedTravelFiscais;
+  const fiscalNames = nomeFiscalStr.split(" / ");
+  const crfFiscalStr = fiscalNames.map(f => getCrfForName(f.trim())).join(" / ");
+  const sexoFiscalStr = initialNames.map(f => getGenderForName(f.trim())).join(" / ");
+
+  return {
+    customTemplateVariables,
+    nomeFiscalStr,
+    crfFiscalStr,
+    sexoFiscalStr,
+    getCrfForName,
+    getGenderForName,
+    initialNames
+  };
+};
+
+export const createParagraph = (text: string, options: { 
   bold?: boolean; 
   italic?: boolean; 
   size?: number; 
@@ -32,35 +224,51 @@ const createParagraph = (text: string, options: {
     break: i > 0 ? 1 : undefined,
     bold: options.bold,
     italics: options.italic,
-    size: options.size || 24, // 12pt default
+    size: options.size || 24, // 12pt default (24 dxa half-points)
     font: options.font || "Times New Roman",
     color: options.color || "000000" // Pure black for standard documents
   }));
 
   return new Paragraph({
-    alignment: options.align || AlignmentType.LEFT,
+    alignment: options.align || AlignmentType.JUSTIFIED, // Default to justified text
     spacing: {
       before: options.before !== undefined ? options.before : 60,
       after: options.after !== undefined ? options.after : 60,
+      line: 360, // 360 twips is exactly 1.5 line spacing (1.5 * 240)
     },
     children: children,
   });
 };
 
-interface ExportMunicipalProps {
-  selectedCity: string;
-  filterLabel: string;
-  filteredEstabs: Estabelecimento[];
-  termos: TermoSanitario[];
-  customAvaliacaoGeralText?: string;
-  dateFormat?: 'apenas_data' | 'data_hora' | 'sem_data';
-  travelPeriod?: string;
-}
-
 export const generateMunicipalReportChildren = (
-  { selectedCity, filterLabel, filteredEstabs, termos, customAvaliacaoGeralText, dateFormat = 'apenas_data' }: ExportMunicipalProps
+  options: ExportMunicipalProps
 ) => {
+  const { 
+    selectedCity, 
+    filterLabel, 
+    filteredEstabs, 
+    termos, 
+    customAvaliacaoGeralText, 
+    dateFormat = 'apenas_data',
+    travelPeriod = "NÃO INFORMADO",
+    nomeFiscalStr = "",
+    crfFiscalStr = "",
+    sexoFiscalStr = "",
+    customTemplateVariables = {}
+  } = options;
+
   const childrenElements: any[] = [];
+
+  const clean = (txt: string) => replaceVarMatches(
+    txt, 
+    selectedCity, 
+    travelPeriod, 
+    nomeFiscalStr, 
+    crfFiscalStr, 
+    sexoFiscalStr, 
+    customTemplateVariables,
+    filteredEstabs.length
+  );
 
   // 2. ITEM 3.0 DA AVALIAÇÃO GERAL
   childrenElements.push(
@@ -74,11 +282,11 @@ export const generateMunicipalReportChildren = (
 
   const defaultAssessmentFallback = `Como é sabido, é de competência do Conselho Regional de Farmácia a fiscalização do exercício da profissão farmacêutica no Estado do Amazonas, visando resguardar o cumprimento da legislação vigente e, indiretamente, atuar na promoção da saúde em todo Estado. 
 
-No Município de ${selectedCity.toUpperCase()} foram realizadas ${filteredEstabs.length} inspeções em estabelecimentos privados e unidades públicas, sem aplicação de auto de infração.`;
+No Município de [MUNICIPIO] foram realizadas [QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO] inspeções em estabelecimentos privados e unidades públicas, sem aplicação de auto de infração.`;
 
   const assessmentText = customAvaliacaoGeralText || defaultAssessmentFallback;
 
-  assessmentText.split(/\r?\n\n/).forEach(pBlock => {
+  clean(assessmentText).split(/\r?\n\n/).forEach(pBlock => {
     if (pBlock.trim() === "") return;
     if (pBlock.startsWith("**") && pBlock.endsWith("**")) {
       childrenElements.push(
@@ -101,7 +309,7 @@ No Município de ${selectedCity.toUpperCase()} foram realizadas ${filteredEstabs
   });
 
   // 4. DA AVALIAÇÃO ESPECÍFICA DE CADA ESTABELECIMENTO
-  if (!assessmentText.includes("4. DA AVALIAÇÃO ESPECÍFICA DE CADA ESTABELECIMENTO")) {
+  if (!clean(assessmentText).includes("4. DA AVALIAÇÃO ESPECÍFICA DE CADA ESTABELECIMENTO")) {
     childrenElements.push(
       createParagraph("4. DA AVALIAÇÃO ESPECÍFICA DE CADA ESTABELECIMENTO", {
         bold: true,
@@ -113,7 +321,7 @@ No Município de ${selectedCity.toUpperCase()} foram realizadas ${filteredEstabs
 
     childrenElements.push(
       createParagraph(
-        "Em virtude do risco sanitário e das irregularidades identificadas perante o CRF/AM, será realizada uma análise individualizada de alguns estabelecimentos afetados. Essa medida visa fornecer informações detalhadas aos órgãos competentes, garantindo que as devidas providências sejam tomadas para assegurar a conformidade e a segurança na prestação de serviços farmacêuticos.",
+        clean("Em virtude do risco sanitário e das irregularidades identificadas perante o CRF/AM, será realizada uma análise individualizada de alguns estabelecimentos afetados. Essa medida visa fornecer informações detalhadas aos órgãos competentes, garantindo que as devidas providências sejam tomadas para assegurar a conformidade e a segurança na prestação de serviços farmacêuticos."),
         {
           size: 24,
           before: 100,
@@ -125,7 +333,7 @@ No Município de ${selectedCity.toUpperCase()} foram realizadas ${filteredEstabs
 
   if (filteredEstabs.length === 0) {
     childrenElements.push(
-      createParagraph("Nenhum estabelecimento comercial local sob as condições de filtro atualmente aplicadas.", {
+      createParagraph(clean("Nenhum estabelecimento comercial local sob as condições de filtro atualmente aplicadas."), {
         italic: true,
         size: 24,
         color: "555555"
@@ -186,35 +394,35 @@ No Município de ${selectedCity.toUpperCase()} foram realizadas ${filteredEstabs
       const loteVal = getValueOrFallback(t?.lote);
 
       // Detail fields without tables
-      childrenElements.push(createParagraph(`Nome Fantasia: ${getValueOrFallback(e.fantasia).toUpperCase()}`, { bold: true, size: 24, before: 30, after: 30 }));
-      childrenElements.push(createParagraph(`Razão Social: ${getValueOrFallback(e.razaoSocial).toUpperCase()}`, { size: 24, before: 30, after: 30 }));
-      childrenElements.push(createParagraph(`CNPJ: ${getValueOrFallback(e.cnpj)}`, { size: 24, before: 30, after: 30 }));
-      childrenElements.push(createParagraph(`Inscrição: ${getValueOrFallback(e.inscricao)}`, { size: 24, before: 30, after: 30 }));
-      childrenElements.push(createParagraph(`Endereço: ${getValueOrFallback(e.endereco).toUpperCase()}`, { size: 24, before: 30, after: 30 }));
-      childrenElements.push(createParagraph(`Bairro: ${getValueOrFallback(e.bairro).toUpperCase()}`, { size: 24, before: 30, after: 30 }));
-      childrenElements.push(createParagraph(`Município: ${getValueOrFallback(e.cidade).toUpperCase()}`, { size: 24, before: 30, after: 30 }));
-      childrenElements.push(createParagraph(`Termo de Inspeção: ${termoInspeção}`, { size: 24, before: 30, after: 30 }));
+      childrenElements.push(createParagraph(clean(`Nome Fantasia: ${getValueOrFallback(e.fantasia).toUpperCase()}`), { bold: true, size: 24, before: 30, after: 30 }));
+      childrenElements.push(createParagraph(clean(`Razão Social: ${getValueOrFallback(e.razaoSocial).toUpperCase()}`), { size: 24, before: 30, after: 30 }));
+      childrenElements.push(createParagraph(clean(`CNPJ: ${getValueOrFallback(e.cnpj)}`), { size: 24, before: 30, after: 30 }));
+      childrenElements.push(createParagraph(clean(`Inscrição: ${getValueOrFallback(e.inscricao)}`), { size: 24, before: 30, after: 30 }));
+      childrenElements.push(createParagraph(clean(`Endereço: ${getValueOrFallback(e.endereco).toUpperCase()}`), { size: 24, before: 30, after: 30 }));
+      childrenElements.push(createParagraph(clean(`Bairro: ${getValueOrFallback(e.bairro).toUpperCase()}`), { size: 24, before: 30, after: 30 }));
+      childrenElements.push(createParagraph(clean(`Município: ${getValueOrFallback(e.cidade).toUpperCase()}`), { size: 24, before: 30, after: 30 }));
+      childrenElements.push(createParagraph(clean(`Termo de Inspeção: ${termoInspeção}`), { size: 24, before: 30, after: 30 }));
       
       if (t?.nrSeqIntimacao && t.nrSeqIntimacao !== "null" && t.nrSeqIntimacao.trim() !== "") {
-        childrenElements.push(createParagraph(`Termo de Intimação: ${t.nrSeqIntimacao}`, { size: 24, before: 30, after: 30 }));
+        childrenElements.push(createParagraph(clean(`Termo de Intimação: ${t.nrSeqIntimacao}`), { size: 24, before: 30, after: 30 }));
       }
       
       if (t?.nrSeqAuto && t.nrSeqAuto !== "null" && t.nrSeqAuto.trim() !== "") {
-        childrenElements.push(createParagraph(`Auto de Infração: ${t.nrSeqAuto}`, { size: 24, before: 30, after: 30 }));
+        childrenElements.push(createParagraph(clean(`Auto de Infração: ${t.nrSeqAuto}`), { size: 24, before: 30, after: 30 }));
       }
       
       if (dataFinal !== "") {
-        childrenElements.push(createParagraph(`Data: ${dataFinal}`, { size: 24, before: 30, after: 30 }));
+        childrenElements.push(createParagraph(clean(`Data: ${dataFinal}`), { size: 24, before: 30, after: 30 }));
       }
       
-      childrenElements.push(createParagraph(`Lote: ${loteVal}`, { size: 24, before: 30, after: 30 }));
-      childrenElements.push(createParagraph(`Farmacêutico (a): ${cleanPharmaName.toUpperCase()}`, { size: 24, before: 30, after: 30 }));
-      childrenElements.push(createParagraph(`CRF AM: ${getValueOrFallback(t?.inscricaoRtPresente)}`, { size: 24, before: 30, after: 30 }));
-      childrenElements.push(createParagraph(`Responsável Técnico: ${getValueOrFallback(t?.nomeRtPresente).toUpperCase()}`, { size: 24, before: 30, after: 30 }));
-      childrenElements.push(createParagraph(`Inf. Prestadas Por: ${ipPor.toUpperCase()}`, { size: 24, before: 30, after: 30 }));
-      childrenElements.push(createParagraph(`Cargo: ${cargo.toUpperCase()}`, { size: 24, before: 30, after: 30 }));
-      childrenElements.push(createParagraph(`RG: ${rgVal.toUpperCase()}`, { size: 24, before: 30, after: 30 }));
-      childrenElements.push(createParagraph(`CPF: ${cpfVal.toUpperCase()}`, { size: 24, before: 30, after: 30 }));
+      childrenElements.push(createParagraph(clean(`Lote: ${loteVal}`), { size: 24, before: 30, after: 30 }));
+      childrenElements.push(createParagraph(clean(`Farmacêutico (a): ${cleanPharmaName.toUpperCase()}`), { size: 24, before: 30, after: 30 }));
+      childrenElements.push(createParagraph(clean(`CRF AM: ${getValueOrFallback(t?.inscricaoRtPresente)}`), { size: 24, before: 30, after: 30 }));
+      childrenElements.push(createParagraph(clean(`Responsável Técnico: ${getValueOrFallback(t?.nomeRtPresente).toUpperCase()}`), { size: 24, before: 30, after: 30 }));
+      childrenElements.push(createParagraph(clean(`Inf. Prestadas Por: ${ipPor.toUpperCase()}`), { size: 24, before: 30, after: 30 }));
+      childrenElements.push(createParagraph(clean(`Cargo: ${cargo.toUpperCase()}`), { size: 24, before: 30, after: 30 }));
+      childrenElements.push(createParagraph(clean(`RG: ${rgVal.toUpperCase()}`), { size: 24, before: 30, after: 30 }));
+      childrenElements.push(createParagraph(clean(`CPF: ${cpfVal.toUpperCase()}`), { size: 24, before: 30, after: 30 }));
 
       // Notes (Organized and formatted from t.obs XML field)
       if (t?.obs && t.obs !== "null") {
@@ -257,7 +465,7 @@ No Município de ${selectedCity.toUpperCase()} foram realizadas ${filteredEstabs
 
           if (isMainTitle) {
             childrenElements.push(
-              createParagraph(trimmed, {
+              createParagraph(clean(trimmed), {
                 bold: true,
                 size: 24, // 12pt
                 before: 200,
@@ -266,9 +474,9 @@ No Município de ${selectedCity.toUpperCase()} foram realizadas ${filteredEstabs
             );
           } else if (isSubTitle) {
             childrenElements.push(
-              createParagraph(trimmed, {
+              createParagraph(clean(trimmed), {
                 bold: true,
-                size: 22, // 11pt
+                size: 24, // 12pt
                 before: 150,
                 after: 80,
               })
@@ -281,8 +489,8 @@ No Município de ${selectedCity.toUpperCase()} foram realizadas ${filteredEstabs
                                trimmed.toUpperCase().includes("OBSERVAÇÃO") ||
                                trimmed.toUpperCase().includes("OBSERVAÇÕES");
             childrenElements.push(
-              createParagraph(trimmed, {
-                size: 22, // 11pt
+              createParagraph(clean(trimmed), {
+                size: 24, // 12pt
                 before: 60,
                 after: 60,
                 bold: hasConforme
@@ -309,7 +517,22 @@ export const exportMunicipalDocx = async (
   filename: string,
   options: ExportMunicipalProps
 ) => {
-  const childrenElements = generateMunicipalReportChildren(options);
+  // Asynchronously load custom variables and fiscal/CRF mappings
+  const details = await loadMappingsAndCustomVars(
+    options.selectedCity,
+    options.travelPeriod || "NÃO INFORMADO",
+    options.travelFiscais || ""
+  );
+
+  const fullOptions: ExportMunicipalProps = {
+    ...options,
+    nomeFiscalStr: details.nomeFiscalStr,
+    crfFiscalStr: details.crfFiscalStr,
+    sexoFiscalStr: details.sexoFiscalStr,
+    customTemplateVariables: details.customTemplateVariables
+  };
+
+  const childrenElements = generateMunicipalReportChildren(fullOptions);
 
   const doc = new Document({
     sections: [
@@ -333,13 +556,6 @@ export const exportMunicipalDocx = async (
   URL.revokeObjectURL(url);
 };
 
-
-import { saveAs } from "file-saver";
-import PizZip from "pizzip";
-import Docxtemplater from "docxtemplater";
-import { doc, getDoc, collection, getDocs } from "firebase/firestore";
-import { db } from "../lib/firebase";
-
 export const exportFullMunicipalDocx = async (
   filename: string,
   options: ExportMunicipalProps,
@@ -348,7 +564,6 @@ export const exportFullMunicipalDocx = async (
   const { selectedCity, filterLabel, filteredEstabs, termos, customAvaliacaoGeralText, travelPeriod, dateFormat = 'apenas_data' } = options;
 
   let templateBase64 = null;
-  let customTemplateVariables: Record<string, string> = {};
   
   try {
     const docRef = doc(db, "settings", "reportTemplate");
@@ -373,133 +588,44 @@ export const exportFullMunicipalDocx = async (
     console.error("Erro ao buscar template no Firebase", e);
   }
 
-  // Fetch custom variables if we have a template
-  if (templateBase64) {
-    try {
-      const varsSnap = await getDocs(collection(db, "templateVariables"));
-      varsSnap.forEach(v => {
-        const data = v.data();
-        if (data.name && data.value) {
-          customTemplateVariables[data.name] = data.value;
-        }
-      });
-    } catch (e) {
-      console.error("Erro ao carregar variaveis customizadas", e);
-    }
-  }
+  // Load custom template variables and map fiscal names correctly using our central DB mapping loader!
+  const details = await loadMappingsAndCustomVars(
+    selectedCity,
+    travelPeriod || "NÃO INFORMADO",
+    travelFiscais || ""
+  );
 
-  // Fetch CRF Mappings
-  const crfMappings: {namePart: string; crfValue: string}[] = [];
-  try {
-    const mappingsSnap = await getDocs(collection(db, "fiscal_crf_mappings"));
-    mappingsSnap.forEach(d => {
-      const data = d.data();
-      if (data.namePart && data.crfValue) {
-        crfMappings.push({ namePart: data.namePart, crfValue: data.crfValue });
-      }
-    });
-  } catch (e) {
-    console.error("Erro ao carregar mapeamentos de CRF", e);
-  }
+  const { 
+    customTemplateVariables, 
+    nomeFiscalStr, 
+    crfFiscalStr, 
+    sexoFiscalStr, 
+    getCrfForName, 
+    getGenderForName, 
+    initialNames 
+  } = details;
 
-  const getCrfForName = (name: string) => {
-    const upperName = name.toUpperCase();
-    for (const m of crfMappings) {
-      if (upperName.includes(m.namePart)) {
-        return m.crfValue;
-      }
-    }
-    // Hardcoded defaults as requested
-    if (upperName.includes("JEFFERSON")) return "CRF/AM 05566";
-    if (upperName.includes("RAFAELLA")) return "CRF/AM 01683";
-    if (upperName.includes("DAIANE")) return "CRF/AM 04510";
-    if (upperName.includes("GLAUCIANE")) return "CRF/AM 04732";
-    
-    return "NÃO INFORMADO";
-  };
-
-  // Fetch Name Mappings
-  const nameMappings: {namePart: string; fullNameValue: string; gender?: string}[] = [];
-  try {
-    const mappingsSnap = await getDocs(collection(db, "fiscal_name_mappings"));
-    mappingsSnap.forEach(d => {
-      const data = d.data();
-      if (data.namePart && data.fullNameValue) {
-        nameMappings.push({ namePart: data.namePart, fullNameValue: data.fullNameValue, gender: data.gender });
-      }
-    });
-  } catch (e) {
-    console.error("Erro ao carregar mapeamentos de Nome", e);
-  }
-
-  const getFullNameForName = (name: string) => {
-    const upperName = name.toUpperCase();
-    for (const m of nameMappings) {
-      if (upperName.includes(m.namePart)) {
-        return m.fullNameValue;
-      }
-    }
-    return name;
-  };
-
-  const getGenderForName = (name: string) => {
-    const upperName = name.toUpperCase();
-    for (const m of nameMappings) {
-      if (upperName.includes(m.namePart)) {
-        return m.gender === "Feminino" ? "Fiscal Farmacêutica" : "Fiscal Farmacêutico";
-      }
-    }
-    return "Fiscal Farmacêutico(a)";
-  };
-
-  // Convert incoming text to full names before further processing
-  let processedTravelFiscais = travelFiscais || "CRF/AM (Fiscais)";
-  const initialNames = processedTravelFiscais.split(" / ");
-  processedTravelFiscais = initialNames.map(f => getFullNameForName(f.trim())).join(" / ");
-
-  // Extract variables
-  const nomeFiscalStr = processedTravelFiscais;
   const fiscalNames = nomeFiscalStr.split(" / ");
-  const crfFiscalStr = fiscalNames.map(f => getCrfForName(f.trim())).join(" / ");
-  const sexoFiscalStr = initialNames.map(f => getGenderForName(f.trim())).join(" / ");
   const dateFormatted = new Date().toLocaleDateString('pt-BR', { year: 'numeric', month: 'long', day: 'numeric' });
   const localDataStr = `${selectedCity}, ${dateFormatted}`;
 
-  // Process custom template dynamic tags replacement
-
+  // Process custom template dynamic tags replacement using the clean function
   Object.keys(customTemplateVariables).forEach(key => {
     let text = customTemplateVariables[key];
     if (text) {
-      text = text.replace(/<cidade>/gi, selectedCity || "")
-                 .replace(/<municipio>/gi, selectedCity || "")
-                 .replace(/\[CIDADE\]/gi, selectedCity || "")
-                 .replace(/<fiscal>/gi, nomeFiscalStr)
-                 .replace(/<inspetor>/gi, nomeFiscalStr)
-                 .replace(/<data>/gi, dateFormatted)
-                 .replace(/\[DATA\]/gi, dateFormatted)
-                 .replace(/<dados>/gi, dateFormatted)
-                 .replace(/\[DADOS\]/gi, dateFormatted)
-                 .replace(/\[PERIODO_DE_FISCALIZAÇÃO\]/gi, travelPeriod || "NÃO INFORMADO");
-
-      fiscalNames.forEach((name, i) => {
-         const regexName = new RegExp(`\\[NOME_FISCAL${i + 1}\\]`, 'gi');
-         const regexCrf = new RegExp(`\\[CRF_FISCAL${i + 1}\\]`, 'gi');
-         const regexSexo = new RegExp(`\\[SEXO_FISCAL${i + 1}\\]`, 'gi');
-         text = text.replace(regexName, name.trim());
-         text = text.replace(regexCrf, getCrfForName(name.trim()));
-         text = text.replace(regexSexo, getGenderForName(initialNames[i].trim()));
-      });
-
-      // Optional generic variables targeting exactly [NOME_FISCAL], [CRF_FISCAL], [SEXO_FISCAL]
-      text = text.replace(/\[NOME_FISCAL\]/gi, nomeFiscalStr);
-      text = text.replace(/\[CRF_FISCAL\]/gi, crfFiscalStr);
-      text = text.replace(/\[SEXO_FISCAL\]/gi, sexoFiscalStr);
-
-      customTemplateVariables[key] = text;
+      customTemplateVariables[key] = replaceVarMatches(
+        text,
+        selectedCity,
+        travelPeriod || "NÃO INFORMADO",
+        nomeFiscalStr,
+        crfFiscalStr,
+        sexoFiscalStr,
+        customTemplateVariables
+      );
     }
   });
 
-  // WordprocessingML helpers for docxtemplater raw XML
+  // WordprocessingML helpers for docxtemplater raw XML - With justified text (both) and 1.5 line spacing (360)
   const escapeXml = (unsafe: string) => unsafe.replace(/[<>&'"]/g, c => {
       switch (c) {
           case '<': return '&lt;';
@@ -512,16 +638,28 @@ export const exportFullMunicipalDocx = async (
   });
 
   const rPrContent = `<w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman"/><w:sz w:val="24"/><w:szCs w:val="24"/>`;
-  const pStyle = `<w:pPr><w:jc w:val="both"/><w:spacing w:before="100" w:after="100"/></w:pPr>`;
+  const pStyle = `<w:pPr><w:jc w:val="both"/><w:spacing w:before="100" w:after="100" w:line="360" w:lineRule="auto"/></w:pPr>`;
   const p = (inner: string) => `<w:p>${pStyle}${inner}</w:p>`;
-  const pBold = (inner: string) => `<w:p><w:pPr><w:jc w:val="both"/><w:spacing w:before="200" w:after="100"/></w:pPr><w:r><w:rPr>${rPrContent}<w:b/></w:rPr><w:t xml:space="preserve">${escapeXml(inner)}</w:t></w:r></w:p>`;
+  const pBold = (inner: string) => `<w:p><w:pPr><w:jc w:val="both"/><w:spacing w:before="200" w:after="100" w:line="360" w:lineRule="auto"/></w:pPr><w:r><w:rPr>${rPrContent}<w:b/></w:rPr><w:t xml:space="preserve">${escapeXml(inner)}</w:t></w:r></w:p>`;
   const r = (text: string, bold = false) => `<w:r><w:rPr>${rPrContent}${bold ? `<w:b/>` : ''}</w:rPr><w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r>`;
 
   let relatorioSimplesText = ""; // Plain text fallback
   let relatorioSimplesXml = ""; // Rich text for custom template
   
-  const defaultAssessmentFallback = `Como é sabido, é de competência do Conselho Regional de Farmácia a fiscalização do exercício da profissão farmacêutica no Estado do Amazonas, visando resguardar o cumprimento da legislação vigente e, indiretamente, atuar na promoção da saúde em todo Estado.\n\nNo Município de ${selectedCity.toUpperCase()} foram realizadas ${filteredEstabs.length} inspeções em estabelecimentos privados e unidades públicas, sem aplicação de auto de infração.`;
+  const defaultAssessmentFallback = `Como é sabido, é de competência do Conselho Regional de Farmácia a fiscalização do exercício da profissão farmacêutica no Estado do Amazonas, visando resguardar o cumprimento da legislação vigente e, indiretamente, atuar na promoção da saúde em todo Estado.\n\nNo Município de [MUNICIPIO] foram realizadas [QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO] inspeções em estabelecimentos privados e unidades públicas, sem aplicação de auto de infração.`;
   let assessmentText = customAvaliacaoGeralText || defaultAssessmentFallback;
+
+  // Run global variable replacement on assessmentText to fix the [MUNICIPIO] bug in Complete Report
+  assessmentText = replaceVarMatches(
+    assessmentText,
+    selectedCity,
+    travelPeriod || "NÃO INFORMADO",
+    nomeFiscalStr,
+    crfFiscalStr,
+    sexoFiscalStr,
+    customTemplateVariables,
+    filteredEstabs.length
+  );
 
   fiscalNames.forEach((name, i) => {
     const regexName = new RegExp(`\\[NOME_FISCAL${i + 1}\\]`, 'gi');
@@ -667,7 +805,7 @@ export const exportFullMunicipalDocx = async (
 
   // If no template in DB, use the fallback basic docx generation
   if (!templateBase64) {
-    alert("Nenhum template customizado foi encontrado no Painel do Administrador. O sistema fará a exportação usando o formato básico.");
+    console.error("Nenhum template customizado foi encontrado no Painel do Administrador. O sistema fará a exportação usando o formato básico.");
     
     const templateText = DEFAULT_FULL_REPORT_TEMPLATE;
     const templateLines = templateText.split(/\r?\n/);
@@ -678,23 +816,27 @@ export const exportFullMunicipalDocx = async (
         const simpleChildren = generateMunicipalReportChildren(options);
         fullChildren.push(...simpleChildren);
       } else {
-        let resolvedLine = line;
-        resolvedLine = resolvedLine.replace(/\[NOME_FISCAL\]/g, nomeFiscalStr);
-        resolvedLine = resolvedLine.replace(/\[CRF_FISCAL\]/g, crfFiscalStr);
-        resolvedLine = resolvedLine.replace(/\[SEXO_FISCAL\]/g, sexoFiscalStr);
-        resolvedLine = resolvedLine.replace(/\[LOCAL_DATA_POR_EXTENSO\]/g, localDataStr);
+        let resolvedLine = replaceVarMatches(
+          line,
+          selectedCity,
+          travelPeriod || "NÃO INFORMADO",
+          nomeFiscalStr,
+          crfFiscalStr,
+          sexoFiscalStr,
+          customTemplateVariables
+        );
         
         const isHeader = resolvedLine.match(/^[A-Z0-9.\- \t]+$/) && resolvedLine.length > 3 && !resolvedLine.includes(",");
         
         fullChildren.push(
           new Paragraph({
-            alignment: AlignmentType.LEFT,
-            spacing: { before: 80, after: 80 },
+            alignment: AlignmentType.JUSTIFIED,
+            spacing: { before: 80, after: 80, line: 360 },
             children: [
               new TextRun({
                 text: resolvedLine,
                 bold: isHeader ? true : false,
-                size: 24,
+                size: 24, // 12pt
                 font: "Times New Roman"
               })
             ]
@@ -760,7 +902,7 @@ export const exportFullMunicipalDocx = async (
     saveAs(out, filename.endsWith(".docx") ? filename : filename + ".docx");
   } catch (error) {
     console.error("Error generating docx from template", error);
-    alert("Ocorreu um erro ao gerar o documento usando o template enviado. Verifique se o formato das variáveis está correto.");
+    console.error("Ocorreu um erro ao gerar o documento usando o template enviado. Verifique se o formato das variáveis está correto.");
   }
 };
 

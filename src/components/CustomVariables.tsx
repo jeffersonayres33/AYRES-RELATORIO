@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { collection, doc, getDocs, setDoc, deleteDoc } from "firebase/firestore";
-import { db } from "../lib/firebase";
+import { collection, doc, getDocs, setDoc, deleteDoc, db } from "../lib/supabase";
 import { useLoading } from "../contexts/LoadingContext";
 import { Plus, Trash2, Edit2, Check, X } from "lucide-react";
 
@@ -39,7 +38,7 @@ export default function CustomVariables() {
 
   const handleSave = async (id?: string) => {
     if (!newName.trim() || !newValue.trim()) {
-      alert("Nome e valor são obrigatórios.");
+      console.error("Nome e valor são obrigatórios.");
       return;
     }
     
@@ -59,7 +58,7 @@ export default function CustomVariables() {
       setIsAdding(false);
       setEditingId(null);
     } catch(e) {
-      alert("Erro ao salvar.");
+      console.error("Erro ao salvar.");
     } finally {
       hideLoading();
     }
@@ -74,7 +73,7 @@ export default function CustomVariables() {
       await deleteDoc(doc(db, "templateVariables", id));
       await fetchVariables();
     } catch(e) {
-      alert("Erro ao remover.");
+      console.error("Erro ao remover.");
     } finally {
       hideLoading();
     }

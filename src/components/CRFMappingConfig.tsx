@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { collection, doc, getDocs, setDoc, deleteDoc, query, orderBy } from "firebase/firestore";
-import { db } from "../lib/firebase";
+import { collection, doc, getDocs, setDoc, deleteDoc, db } from "../lib/supabase";
 import { useLoading } from "../contexts/LoadingContext";
 import { Plus, Trash2, Edit2, Check } from "lucide-react";
 
@@ -20,18 +19,29 @@ export default function CRFMappingConfig() {
   const [namePart, setNamePart] = useState("");
   const [crfValue, setCrfValue] = useState("");
 
+  const [error, setError] = useState<string | null>(null);
+
   const fetchMappings = async () => {
     try {
+      setError(null);
       const snap = await getDocs(collection(db, "fiscal_crf_mappings"));
       const list: CRFMapping[] = [];
       snap.forEach(d => {
-        list.push({ id: d.id, ...d.data() } as CRFMapping);
+        const data = d.data() || {};
+        const namePartVal = data.namePart ?? data.namepart ?? data.name_part ?? data.nome_part ?? data.nome ?? data.name ?? "";
+        const crfValueVal = data.crfValue ?? data.crfvalue ?? data.crf_value ?? data.crf ?? data.valor ?? "";
+        list.push({ 
+          id: d.id, 
+          namePart: String(namePartVal).trim(), 
+          crfValue: String(crfValueVal).trim() 
+        } as CRFMapping);
       });
-      // Sort alphabetically
-      list.sort((a, b) => a.namePart.localeCompare(b.namePart));
+      // Sort alphabetically defensively
+      list.sort((a, b) => (a.namePart || "").localeCompare(b.namePart || ""));
       setMappings(list);
-    } catch(e) {
+    } catch(e: any) {
       console.error("Error fetching mappings", e);
+      setError("Erro ao carregar mapeamentos de CRF do Firebase: " + (e.message || e));
     }
   };
 
@@ -41,7 +51,7 @@ export default function CRFMappingConfig() {
 
   const handleSave = async (id?: string) => {
     if (!namePart.trim() || !crfValue.trim()) {
-      alert("Parte do Nome e Valor do CRF são obrigatórios.");
+      console.error("Parte do Nome e Valor do CRF são obrigatórios.");
       return;
     }
     
@@ -59,8 +69,8 @@ export default function CRFMappingConfig() {
       setCrfValue("");
       setIsAdding(false);
       setEditingId(null);
-    } catch(e) {
-      alert("Erro ao salvar.");
+    } catch(e: any) {
+      console.error("Erro ao salvar: " + e.message);
     } finally {
       hideLoading();
     }
@@ -74,8 +84,8 @@ export default function CRFMappingConfig() {
     try {
       await deleteDoc(doc(db, "fiscal_crf_mappings", id));
       await fetchMappings();
-    } catch(e) {
-      alert("Erro ao remover.");
+    } catch(e: any) {
+      console.error("Erro ao remover: " + e.message);
     } finally {
       hideLoading();
     }
@@ -90,6 +100,14 @@ export default function CRFMappingConfig() {
 
   return (
     <div className="bg-white border border-slate-200 rounded-3xl p-6 relative overflow-hidden shadow-xs space-y-6 mt-6">
+      {error && (
+        <div className="bg-rose-50 text-rose-700 p-4 rounded-2xl text-sm font-bold border border-rose-100 flex flex-col gap-1">
+          <p>{error}</p>
+          <p className="text-xs font-semibold text-rose-500">
+            Dica: Verifique se a sua conexão está ativa ou limpe o cache do banco através da seção "Backup & Restauração".
+          </p>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h3 className="font-extrabold text-lg uppercase tracking-widest text-slate-900 mb-1 flex items-center gap-2">

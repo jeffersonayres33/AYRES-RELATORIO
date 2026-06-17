@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { collection, doc, getDocs, setDoc, deleteDoc } from "firebase/firestore";
-import { db } from "../lib/firebase";
+import { collection, doc, getDocs, setDoc, deleteDoc, db } from "../lib/supabase";
 import { useLoading } from "../contexts/LoadingContext";
 import { Plus, Trash2, Edit2, Check } from "lucide-react";
 
@@ -22,18 +21,32 @@ export default function NameMappingConfig() {
   const [fullNameValue, setFullNameValue] = useState("");
   const [gender, setGender] = useState<"Masculino" | "Feminino">("Masculino");
 
+  const [error, setError] = useState<string | null>(null);
+
   const fetchMappings = async () => {
     try {
+      setError(null);
       const snap = await getDocs(collection(db, "fiscal_name_mappings"));
       const list: NameMapping[] = [];
       snap.forEach(d => {
-        list.push({ id: d.id, ...d.data() } as NameMapping);
+        const data = d.data() || {};
+        const namePartVal = data.namePart ?? data.namepart ?? data.name_part ?? data.nome_part ?? data.nome ?? data.name ?? "";
+        const fullNameValueVal = data.fullNameValue ?? data.fullnamevalue ?? data.full_name_value ?? data.fullName ?? data.fullname ?? data.nome_completo ?? data.nomeCompleto ?? "";
+        const genderVal = data.gender ?? data.sexo ?? "Masculino";
+
+        list.push({ 
+          id: d.id, 
+          namePart: String(namePartVal).trim(), 
+          fullNameValue: String(fullNameValueVal).trim(),
+          gender: (genderVal === "Feminino" || genderVal === "feminino" || genderVal === "female" || genderVal === "F") ? "Feminino" : "Masculino"
+        } as NameMapping);
       });
-      // Sort alphabetically
-      list.sort((a, b) => a.namePart.localeCompare(b.namePart));
+      // Sort alphabetically defensively
+      list.sort((a, b) => (a.namePart || "").localeCompare(b.namePart || ""));
       setMappings(list);
-    } catch(e) {
+    } catch(e: any) {
       console.error("Error fetching mappings", e);
+      setError("Erro ao carregar mapeamentos de nomes do Firebase: " + (e.message || e));
     }
   };
 
@@ -43,7 +56,7 @@ export default function NameMappingConfig() {
 
   const handleSave = async (id?: string) => {
     if (!namePart.trim() || !fullNameValue.trim()) {
-      alert("Parte do Nome e Valor do Nome são obrigatórios.");
+      console.error("Parte do Nome e Valor do Nome são obrigatórios.");
       return;
     }
     
@@ -63,8 +76,8 @@ export default function NameMappingConfig() {
       setGender("Masculino");
       setIsAdding(false);
       setEditingId(null);
-    } catch(e) {
-      alert("Erro ao salvar.");
+    } catch(e: any) {
+      console.error("Erro ao salvar: " + e.message);
     } finally {
       hideLoading();
     }
@@ -78,8 +91,8 @@ export default function NameMappingConfig() {
     try {
       await deleteDoc(doc(db, "fiscal_name_mappings", id));
       await fetchMappings();
-    } catch(e) {
-      alert("Erro ao remover.");
+    } catch(e: any) {
+      console.error("Erro ao remover: " + e.message);
     } finally {
       hideLoading();
     }
@@ -95,6 +108,14 @@ export default function NameMappingConfig() {
 
   return (
     <div className="bg-white border border-slate-200 rounded-3xl p-6 relative overflow-hidden shadow-xs space-y-6 mt-6">
+      {error && (
+        <div className="bg-rose-50 text-rose-700 p-4 rounded-2xl text-sm font-bold border border-rose-100 flex flex-col gap-1">
+          <p>{error}</p>
+          <p className="text-xs font-semibold text-rose-500">
+            Dica: Verifique se a sua conexão está ativa ou limpe o cache do banco através da seção "Backup & Restauração".
+          </p>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h3 className="font-extrabold text-lg uppercase tracking-widest text-slate-900 mb-1 flex items-center gap-2">

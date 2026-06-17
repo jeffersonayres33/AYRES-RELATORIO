@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { collection, getDocs, doc, setDoc, deleteDoc, writeBatch } from "firebase/firestore";
-import { db } from "../lib/firebase";
+import { collection, getDocs, doc, setDoc, deleteDoc, writeBatch, db } from "../lib/supabase";
 import { ListChecks, AlertCircle, Trash2, Plus, PenSquare, X, ArrowUp, ArrowDown, Braces, Code, Settings } from "lucide-react";
 import { EvalItem, EvalVariable, EvalVariableField } from "../types";
 import { defaultEvaluationItems } from "../lib/defaultEvalItems";
@@ -43,8 +42,9 @@ export default function GeneralEvalConfig() {
 
       setItems(list.sort((a, b) => (a.order || 0) - (b.order || 0)));
     } catch (e: any) {
-       console.error(e);
-       setError("Falha ao carregar itens de avaliação.");
+       console.error("fetchItems error", e);
+       setError("Falha ao carregar itens no banco: " + e.message);
+       setItems(defaultEvaluationItems.sort((a, b) => (a.order || 0) - (b.order || 0)));
     }
   };
 
@@ -58,45 +58,34 @@ export default function GeneralEvalConfig() {
       
       if (list.length === 0) {
         for (const variable of defaultEvalVariables) {
-          await setDoc(doc(db, "evaluation_variables", variable.id), variable);
+          try {
+             await setDoc(doc(db, "evaluation_variables", variable.id), variable);
+          } catch(err) {}
           list.push(variable);
         }
       }
 
       setVariables(list);
     } catch (e: any) {
-       console.error(e);
-       setError("Falha ao carregar variáveis de avaliação.");
+       console.error("fetchVariables error", e);
+       setError("Falha ao carregar variáveis de avaliação (modo offline/fallback ativado).");
+       setVariables(defaultEvalVariables);
     }
   };
 
   const fetchIntro = async () => {
     try {
-      const { getDoc, setDoc } = await import("firebase/firestore");
-      const d = await getDoc(doc(db, "eval_config", "intro_text"));
+      const { getDoc, setDoc } = await import("../lib/supabase");
+      const d = await getDoc(doc(db, "evaluation_intro", "default"));
       if (d.exists() && d.data().text) {
         setIntroText(d.data().text);
       } else {
         const defaultText = `Como é sabido, é de competência do Conselho Regional de Farmácia a fiscalização do exercício da profissão farmacêutica no Estado do Amazonas, visando resguardar o cumprimento da legislação vigente e, indiretamente, atuar na promoção da saúde em todo Estado.\n\nNo Município de [MUNICIPIO] foram realizadas [QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO] inspeções técnicas em estabelecimentos farmacêuticos privados e assistência pública do SUS, de modo a mensurar a conformidade sanitária nas ações locais.\n\nPor fim, é de fundamental importância que as autoridades sanitárias intensifiquem a fiscalização nos estabelecimentos citados, a fim de coibir as irregularidades sanitárias que podem comprometer a saúde da população e garantir que as normas e regulamentações sejam cumpridas, assegurando a qualidade dos serviços prestados e a segurança dos pacientes.`;
-        await setDoc(doc(db, "eval_config", "intro_text"), { text: defaultText });
+        await setDoc(doc(db, "evaluation_intro", "default"), { text: defaultText });
         setIntroText(defaultText);
       }
     } catch(e) {
       console.error(e);
-    }
-  };
-
-  const saveIntroText = async () => {
-    try {
-      showLoading("Salvando texto introdutório...");
-      const { setDoc } = await import("firebase/firestore");
-      await setDoc(doc(db, "eval_config", "intro_text"), { text: introText });
-      toast.success("Texto introdutório salvo com sucesso!");
-    } catch (e: any) {
-      console.error(e);
-      toast.error("Erro ao salvar texto introdutório.");
-    } finally {
-      hideLoading();
     }
   };
 
@@ -158,15 +147,21 @@ export default function GeneralEvalConfig() {
       return;
     }
 
-    if (variableFields.length === 0) {
-      setError("Adicione pelo menos um campo para esta variável.");
-      return;
-    }
-
-    const invalidFields = variableFields.some(f => !f.key.trim() || !f.label.trim());
-    if (invalidFields) {
-      setError("Preencha a Chave e o Rótulo de todos os campos.");
-      return;
+    if (editingVariable?.type !== "condition") {
+      if (variableFields.length === 0) {
+        setError("Adicione pelo menos um campo para esta variável.");
+        return;
+      }
+      const invalidFields = variableFields.some(f => !f.key.trim() || !f.label.trim());
+      if (invalidFields) {
+        setError("Preencha a Chave e o Rótulo de todos os campos.");
+        return;
+      }
+      const invalidRadioOptions = variableFields.some(f => f.inputType === 'radio' && (!f.options || f.options.length === 0 || f.options.some(o => !o.trim())));
+      if (invalidRadioOptions) {
+        setError("Preencha as opções corretamente para todos os campos do tipo Rádio.");
+        return;
+      }
     }
 
     showLoading("Salvando variável...");
@@ -185,7 +180,9 @@ export default function GeneralEvalConfig() {
         fields: variableFields.map(f => ({
           key: f.key.trim().toLowerCase(),
           label: f.label.trim(),
-          placeholder: (f.placeholder || "").trim()
+          placeholder: (f.placeholder || "").trim(),
+          inputType: f.inputType || "text",
+          options: f.options ? f.options.map(o => o.trim()).filter(Boolean) : []
         }))
       };
 
@@ -540,8 +537,11 @@ export default function GeneralEvalConfig() {
                                 className="w-full bg-white border border-slate-200 focus:border-violet-500 rounded-xl px-3 py-2 text-sm text-slate-800 outline-none cursor-pointer"
                              >
                                 <option value="equals">Igual a (=)</option>
+                                <option value="not_equals">Diferente de (≠)</option>
                                 <option value="greater_than">Maior que (&gt;)</option>
+                                <option value="greater_equals">Maior ou igual a (≥)</option>
                                 <option value="less_than">Menor que (&lt;)</option>
+                                <option value="less_equals">Menor ou igual a (≤)</option>
                              </select>
                           </div>
                           <div className="sm:col-span-2">
@@ -576,32 +576,33 @@ export default function GeneralEvalConfig() {
                   )}
 
                   {(!editingVariable.type || editingVariable.type === "table") && (
-                    <>
+                    <div className="space-y-4">
                       <div>
                          <label className="block text-sm font-extrabold uppercase tracking-widest text-slate-500 mb-1.5 ml-1">Modelo de Formatação (Format Pattern)</label>
-                         <input 
-                            value={editingVariable.formatPattern || ""}
-                            onChange={e => setEditingVariable({ ...editingVariable, formatPattern: e.target.value })}
-                            className="w-full bg-slate-50 border border-slate-200 focus:border-violet-500 rounded-xl px-4 py-3 text-sm text-slate-800 font-medium outline-none"
-                            placeholder="Ex: Equipamento {nome} (Marca {marca}) na cor {cor}"
-                         />
-                         <p className="text-[10.5px] text-slate-400 mt-1.5 leading-relaxed ml-1">
-                           Define o formato de cada registro preenchido no relatório final. Utilize as chaves <code>{"{nome_do_campo}"} </code> correspondentes ao campos cadastrados abaixo.
-                         </p>
-                      </div>
+                             <input 
+                                value={editingVariable.formatPattern || ""}
+                                onChange={e => setEditingVariable({ ...editingVariable, formatPattern: e.target.value })}
+                                className="w-full bg-slate-50 border border-slate-200 focus:border-violet-500 rounded-xl px-4 py-3 text-sm text-slate-800 font-medium outline-none"
+                                placeholder="Ex: Equipamento {nome} (Marca {marca}) na cor {cor}"
+                             />
+                             <p className="text-[10.5px] text-slate-400 mt-1.5 leading-relaxed ml-1">
+                               Define o formato de cada registro preenchido no relatório final. Utilize as chaves <code>{"{nome_do_campo}"} </code> correspondentes ao campos cadastrados abaixo.
+                             </p>
+                          </div>
 
-                      {/* Fields list in modal */}
-                      <div className="bg-slate-50 p-4 border border-slate-200 rounded-2xl space-y-3">
-                     <div className="flex items-center justify-between">
-                       <span className="text-xs font-extrabold uppercase tracking-wider text-slate-600 block">Campos da Variável</span>
-                       <button
-                         type="button"
-                         onClick={() => setVariableFields([...variableFields, { key: "", label: "", placeholder: "" }])}
-                         className="text-xs text-violet-600 font-bold uppercase hover:underline flex items-center gap-1 cursor-pointer"
-                       >
-                         <Plus className="w-3.5 h-3.5" /> Adicionar Campo
-                       </button>
-                     </div>
+                          {/* Fields list in modal */}
+                          <div className="bg-slate-50 p-4 border border-slate-200 rounded-2xl space-y-3">
+                         <div className="flex items-center justify-between">
+                           <span className="text-xs font-extrabold uppercase tracking-wider text-slate-600 block">Campos da Variável</span>
+                           <button
+                             type="button"
+                             onClick={() => setVariableFields([...variableFields, { key: "", label: "", placeholder: "" }])}
+                             className="text-xs text-violet-600 font-bold uppercase hover:underline flex items-center gap-1 cursor-pointer"
+                           >
+                             <Plus className="w-3.5 h-3.5" /> Adicionar Campo
+                           </button>
+                         </div>
+
 
                      <div className="space-y-2.5">
                        {variableFields.map((field, idx) => (
@@ -649,27 +650,96 @@ export default function GeneralEvalConfig() {
                                    setVariableFields(n);
                                  }}
                                  className="w-full text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg outline-none focus:border-violet-500"
-                               />
-                             </div>
-                           </div>
-                           <button
-                             type="button"
-                             onClick={() => setVariableFields(variableFields.filter((_, i) => i !== idx))}
-                             className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg cursor-pointer self-center mt-4 shrink-0 transition-colors"
-                             title="Remover Campo"
-                           >
-                             <Trash2 className="w-4 h-4" />
-                           </button>
-                         </div>
-                       ))}
+                                />
+                              </div>
+                             
+                             <div className="mt-3 bg-slate-50 border border-slate-200 p-3 rounded-lg w-full">
+                               <label className="text-[9px] uppercase tracking-wider font-extrabold text-slate-400 block mb-1.5 ml-0.5">Tipo do Campo</label>
+                               <select
+                                  value={field.inputType || "text"}
+                                  onChange={e => {
+                                     const n = [...variableFields];
+                                     n[idx].inputType = e.target.value as "text" | "radio";
+                                     if(e.target.value === "radio" && (!n[idx].options || n[idx].options.length === 0)) {
+                                        n[idx].options = [""];
+                                     }
+                                     setVariableFields(n);
+                                  }}
+                                  className="w-full text-xs px-2.5 py-2 border border-slate-200 rounded-lg outline-none focus:border-violet-500 bg-white"
+                               >
+                                  <option value="text">Texto</option>
+                                  <option value="radio">Radio</option>
+                               </select>
+
+                               {field.inputType === "radio" && (
+                                  <div className="mt-3 space-y-2 border-t border-slate-200 pt-3">
+                                     <div className="flex justify-between items-center mb-2">
+                                        <label className="text-[9px] uppercase tracking-wider font-extrabold text-slate-500">Opções do Rádio</label>
+                                        <button
+                                           type="button"
+                                           onClick={() => {
+                                              const n = [...variableFields];
+                                              n[idx].options = [...(n[idx].options || []), ""];
+                                              setVariableFields(n);
+                                           }}
+                                           className="text-[10px] text-violet-600 hover:text-violet-700 font-bold flex items-center justify-center border border-violet-200 px-2 rounded-md hover:bg-violet-50 transition-colors"
+                                        >
+                                           + Opção
+                                        </button>
+                                     </div>
+                                     {(field.options || []).map((o, oIdx) => (
+                                        <div key={oIdx} className="flex gap-1.5 items-center">
+                                           <input
+                                              type="text"
+                                              value={o}
+                                              onChange={e => {
+                                                 const n = [...variableFields];
+                                                 const opts = [...(n[idx].options || [])];
+                                                 opts[oIdx] = e.target.value;
+                                                 n[idx].options = opts;
+                                                 setVariableFields(n);
+                                              }}
+                                              placeholder="Ex: Conforme"
+                                              className="flex-1 text-xs px-2 py-1 border border-slate-200 rounded outline-none focus:border-violet-500"
+                                           />
+                                           <button
+                                              type="button"
+                                              onClick={() => {
+                                                 const n = [...variableFields];
+                                                 const opts = [...(n[idx].options || [])];
+                                                 opts.splice(oIdx, 1);
+                                                 n[idx].options = opts;
+                                                 setVariableFields(n);
+                                              }}
+                                              className="text-rose-500 hover:bg-rose-100 p-1 rounded-md"
+                                           >
+                                              <Trash2 className="w-3.5 h-3.5" />
+                                           </button>
+                                        </div>
+                                     ))}
+                                  </div>
+                               )}
+                            </div>
+                            
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setVariableFields(variableFields.filter((_, i) => i !== idx))}
+                              className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg cursor-pointer self-center mt-4 shrink-0 transition-colors"
+                              title="Remover Campo"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))}
                        {variableFields.length === 0 && (
                          <p className="text-xs text-slate-400 italic">Nenhum campo registrado. Adicione pelo menos um campo.</p>
                        )}
                      </div>
+                    </div>
                   </div>
-                  </>
                   )}
-                  
+
                   <div className="flex justify-end pt-2 items-center gap-4">
                      {error && (
                         <div className="flex-1 text-right text-rose-600 text-xs font-bold animate-in fade-in flex items-center justify-end gap-1.5">
@@ -704,7 +774,7 @@ export default function GeneralEvalConfig() {
                 placeholder="Insira o texto de introdução..."
              />
              <div className="mt-2 text-xs text-slate-500 bg-slate-50 p-2.5 rounded-lg border border-slate-200 px-4">
-               <strong>Dica:</strong> Utilize <code>[MUNICIPIO]</code> e <code>[QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO]</code> para inserir valores dinamicamente.
+               <strong>Dica:</strong> Utilize <code>[MUNICIPIO]</code>, <code>[QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO]</code> e <code>[QTD_FARMACEUTICO]</code> para inserir valores dinamicamente.
              </div>
              <div className="flex justify-end pt-2">
                 <button 

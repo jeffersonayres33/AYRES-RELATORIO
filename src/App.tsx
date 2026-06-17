@@ -25,12 +25,24 @@ import Dashboard from "./components/Dashboard";
 import Importer from "./components/Importer";
 import TripOverview from "./components/TripOverview";
 import AdminPanel from "./components/AdminPanel";
-import { auth } from "./lib/firebase";
-import { signOut } from "firebase/auth";
+import { auth, signOut } from "./lib/supabase";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>("importacao");
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
+
+  const [showRlsWarning, setShowRlsWarning] = useState<boolean>(() => {
+    return localStorage.getItem('supabase_rls_policy_active_warning') === 'true';
+  });
+  const [copiedSql, setCopiedSql] = useState<boolean>(false);
+
+  const sqlToCopy = `-- Executar no SQL Editor do Supabase:\nALTER TABLE "fiscal_crf_mappings" DISABLE ROW LEVEL SECURITY;\nALTER TABLE "fiscal_name_mappings" DISABLE ROW LEVEL SECURITY;\nALTER TABLE "authorized_users" DISABLE ROW LEVEL SECURITY;\nALTER TABLE "evaluation_items" DISABLE ROW LEVEL SECURITY;\nALTER TABLE "evaluation_variables" DISABLE ROW LEVEL SECURITY;\nALTER TABLE "templateVariables" DISABLE ROW LEVEL SECURITY;\nALTER TABLE "evaluation_intro" DISABLE ROW LEVEL SECURITY;\nALTER TABLE "settings" DISABLE ROW LEVEL SECURITY;\nALTER TABLE "settings_chunks" DISABLE ROW LEVEL SECURITY;`;
+
+  const handleCopySql = () => {
+    navigator.clipboard.writeText(sqlToCopy);
+    setCopiedSql(true);
+    setTimeout(() => setCopiedSql(false), 2000);
+  };
 
   // Global state for uploaded data
   const [estabelecimentos, setEstabelecimentos] = useState<Estabelecimento[]>([]);
@@ -120,6 +132,19 @@ export default function App() {
   };
 
   const hasData = estabelecimentos.length > 0;
+
+  const filteredEstabelecimentos = React.useMemo(() => {
+    if (termos.length === 0) {
+      return estabelecimentos;
+    }
+    const activeIds = new Set(termos.map(t => t.estabelecimentoId));
+    return estabelecimentos.filter(e => {
+      if (e.origem === "SISCON") {
+        return activeIds.has(e.inscricao);
+      }
+      return true; // Keep "FEM_NOVO" (xxxx_20) establishments
+    });
+  }, [estabelecimentos, termos]);
 
   const tabs = [
     { id: "importacao", label: "Importação XML", icon: Upload, badge: !hasData ? "Pendente" : "Carregado" },
@@ -298,7 +323,7 @@ export default function App() {
           </div>
         </header>
 
-        {/* Main Body container */}
+
         <main className="flex-1 w-full px-4 sm:px-6 lg:px-8 py-6 print:p-0 print:m-0">
           <AnimatePresence mode="wait">
             <motion.div
@@ -311,7 +336,7 @@ export default function App() {
             >
               {activeTab === "dashboard" && (
                 <Dashboard
-                  estabelecimentos={estabelecimentos}
+                  estabelecimentos={filteredEstabelecimentos}
                   termos={termos}
                   onNavigateToTab={(tab) => {
                     if (!hasData && tab !== "importacao") return; // guard navigation
@@ -329,8 +354,9 @@ export default function App() {
 
               {activeTab === "cidades" && (
                 <TripOverview
-                  estabelecimentos={estabelecimentos}
+                  estabelecimentos={filteredEstabelecimentos}
                   termos={termos}
+                  rts={rts}
                 />
               )}
 

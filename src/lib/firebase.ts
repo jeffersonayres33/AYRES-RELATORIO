@@ -1,20 +1,20 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore, memoryLocalCache } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
-
-const firebaseConfig = {
-  apiKey: "AIzaSyA96Z0a9wuaFpVmeu13Gfn5QZKO7Dmdb2U",
-  authDomain: "relatorioayres.firebaseapp.com",
-  projectId: "relatorioayres",
-  storageBucket: "relatorioayres.firebasestorage.app",
-  messagingSenderId: "854435411122",
-  appId: "1:854435411122:web:6a914e843538cdb61985ab",
-  measurementId: "G-6YR1GWQNJJ"
-};
+import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+
+// Initialize Firestore with memory-only cache (no persistent disk cache)
+// to prevent the browser from holding onto outdated, deleted or stale data,
+// and force HTTP long polling to guarantee ultra-stable connection inside the iframe sandbox!
+export const db = initializeFirestore(app, {
+  localCache: memoryLocalCache(),
+  experimentalForceLongPolling: true
+}, firebaseConfig.firestoreDatabaseId);
+
 export const auth = getAuth(app);
 export const storage = getStorage(app);
+
 

@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
-import { db } from "../lib/firebase";
+import { doc, getDoc, setDoc, deleteDoc, db } from "../lib/supabase";
 import { useLoading } from "../contexts/LoadingContext";
 import { FileUp, FileCheck, Trash2, XCircle } from "lucide-react";
 
@@ -41,7 +40,7 @@ export default function TemplateConfig() {
     if (!file) return;
 
     if (!file.name.endsWith('.docx')) {
-      alert("Por favor, selecione um arquivo no formato .docx");
+      console.error("Por favor, selecione um arquivo no formato .docx");
       return;
     }
 
@@ -91,7 +90,7 @@ export default function TemplateConfig() {
         }
       } catch (err: any) {
         console.error(err);
-        alert("Erro ao salvar o template. Verifique seu acesso ou tamanho do arquivo.");
+        console.error("Erro ao salvar o template. Verifique seu acesso ou tamanho do arquivo.");
       } finally {
         setIsUploading(false);
         setUploadProgress(0);
@@ -124,7 +123,7 @@ export default function TemplateConfig() {
       await fetchTemplateStatus();
     } catch (err: any) {
       console.error(err);
-      alert("Erro ao remover o template.");
+      console.error("Erro ao remover o template.");
     } finally {
       hideLoading();
     }

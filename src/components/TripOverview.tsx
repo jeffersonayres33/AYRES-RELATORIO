@@ -23,26 +23,28 @@ import {
   Trash2,
   PenSquare
 } from "lucide-react";
-import { collection, getDocs, doc, getDoc } from "firebase/firestore";
-import { db } from "../lib/firebase";
-import { Estabelecimento, TermoSanitario, EvalItem, EvalVariable } from "../types";
+import { collection, getDocs, doc, getDoc, db } from "../lib/supabase";
+import { Estabelecimento, TermoSanitario, EvalItem, EvalVariable, TechnicalResponsible } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import { exportMunicipalDocx, exportTravelDocx, exportFullMunicipalDocx } from "../utils/docxExporter";
+import { defaultEvaluationItems } from "../lib/defaultEvalItems";
+import { defaultEvalVariables } from "../lib/defaultEvalVariables";
 import { useLoading } from "../contexts/LoadingContext";
 
 interface TripOverviewProps {
   estabelecimentos: Estabelecimento[];
   termos: TermoSanitario[];
+  rts?: TechnicalResponsible[];
 }
 
-export default function TripOverview({ estabelecimentos, termos }: TripOverviewProps) {
+export default function TripOverview({ estabelecimentos, termos, rts = [] }: TripOverviewProps) {
   const { showLoading, hideLoading } = useLoading();
   const [selectedCity, setSelectedCity] = useState<string>("");
   const [municipalFilter, setMunicipalFilter] = useState<"todos" | "intimados" | "autuados" | "intimados_autuados">("todos");
   const [travelFiscais, setTravelFiscais] = useState<string>("");
   const [travelPeriod, setTravelPeriod] = useState<string>("15/05/2026 a 22/05/2026");
   const [includeClosed, setIncludeClosed] = useState<boolean>(false);
-  const [autoCorrectText, setAutoCorrectText] = useState<boolean>(false);
+  const [autoCorrectText, setAutoCorrectText] = useState<boolean>(true);
   const [dateFormat, setDateFormat] = useState<"apenas_data" | "data_hora" | "sem_data">("apenas_data");
 
   React.useEffect(() => {
@@ -94,46 +96,77 @@ export default function TripOverview({ estabelecimentos, termos }: TripOverviewP
   const [dbEvalVariables, setDbEvalVariables] = useState<EvalVariable[]>([]);
   const [dbEvalIntroText, setDbEvalIntroText] = useState<string>("");
   const [customVariablesData, setCustomVariablesData] = useState<Record<string, Record<string, string>[]>>({});
+  const [templateVariables, setTemplateVariables] = useState<Record<string, string>>({});
 
   React.useEffect(() => {
     const fetchDbParams = async () => {
+      let itemsQs, varsQs, introDoc, templateVarsQs;
       try {
-        const [itemsQs, varsQs, introDoc] = await Promise.all([
-           getDocs(collection(db, "evaluation_items")),
-           getDocs(collection(db, "evaluation_variables")),
-           getDoc(doc(db, "evaluation_intro", "default"))
-        ]);
-        
-        const list: EvalItem[] = [];
-        itemsQs.forEach((d) => list.push({ id: d.id, ...d.data() } as EvalItem));
-        const sortedList = list.sort((a, b) => (a.order || 0) - (b.order || 0));
-        setDbEvalItems(sortedList);
-
-        const varsList: EvalVariable[] = [];
-        varsQs.forEach((d) => varsList.push({ id: d.id, ...d.data() } as EvalVariable));
-        setDbEvalVariables(varsList);
-
-        if (introDoc.exists() && introDoc.data().text) {
-           setDbEvalIntroText(introDoc.data().text);
-        } else {
-           setDbEvalIntroText(`Como é sabido, é de competência do Conselho Regional de Farmácia a fiscalização do exercício da profissão farmacêutica no Estado do Amazonas, visando resguardar o cumprimento da legislação vigente e, indiretamente, atuar na promoção da saúde em todo Estado.\n\nNo Município de [MUNICIPIO] foram realizadas [QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO] inspeções técnicas em estabelecimentos farmacêuticos privados e assistência pública do SUS, de modo a mensurar a conformidade sanitária nas ações locais.\n\nPor fim, é de fundamental importância que as autoridades sanitárias intensifiquem a fiscalização nos estabelecimentos citados, a fim de coibir as irregularidades sanitárias que podem comprometer a saúde da população e garantir que as normas e regulamentações sejam cumpridas, assegurando a qualidade dos serviços prestados e a segurança dos pacientes.`);
-        }
-
-        // Populate evalItems with defaultChecked ones
-
-        setEvalItems((prev) => {
-          const next = { ...prev };
-          sortedList.forEach(item => {
-             if (item.defaultChecked) {
-                next[item.id] = true;
-             }
-          });
-          return next;
-        });
-
-      } catch (e) {
-        console.error("Evaluation Config Fetch Error", e);
+        itemsQs = await getDocs(collection(db, "evaluation_items"));
+      } catch(e) {
+        console.error("Error fetching evaluation_items", e);
       }
+      
+      try {
+        varsQs = await getDocs(collection(db, "evaluation_variables"));
+      } catch(e) {
+        console.error("Error fetching evaluation_variables", e);
+      }
+      
+      try {
+        introDoc = await getDoc(doc(db, "evaluation_intro", "default"));
+      } catch(e) {
+        console.error("Error fetching evaluation_intro", e);
+      }
+
+      try {
+        templateVarsQs = await getDocs(collection(db, "templateVariables"));
+      } catch(e) {
+        console.error("Error fetching templateVariables", e);
+      }
+        
+      const list: EvalItem[] = [];
+      if (itemsQs) {
+        itemsQs.forEach((d) => list.push({ id: d.id, ...d.data() } as EvalItem));
+      }
+      if (list.length === 0) list.push(...defaultEvaluationItems);
+      const sortedList = list.sort((a, b) => (a.order || 0) - (b.order || 0));
+      setDbEvalItems(sortedList);
+
+      const varsList: EvalVariable[] = [];
+      if (varsQs) {
+        varsQs.forEach((d) => varsList.push({ id: d.id, ...d.data() } as EvalVariable));
+      }
+      if (varsList.length === 0) varsList.push(...defaultEvalVariables);
+      setDbEvalVariables(varsList);
+
+      const tVars: Record<string, string> = {};
+      if (templateVarsQs) {
+        templateVarsQs.forEach(d => {
+          const dData = d.data();
+          if (dData.name && dData.value !== undefined) {
+            tVars[dData.name] = dData.value;
+          }
+        });
+      }
+      setTemplateVariables(tVars);
+
+      if (introDoc && introDoc.exists() && introDoc.data().text) {
+         setDbEvalIntroText(introDoc.data().text);
+      } else {
+         setDbEvalIntroText(`Como é sabido, é de competência do Conselho Regional de Farmácia a fiscalização do exercício da profissão farmacêutica no Estado do Amazonas, visando resguardar o cumprimento da legislação vigente e, indiretamente, atuar na promoção da saúde em todo Estado.\n\nNo Município de [MUNICIPIO] foram realizadas [QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO] inspeções técnicas em estabelecimentos farmacêuticos privados e assistência pública do SUS, de modo a mensurar a conformidade sanitária nas ações locais.\n\nPor fim, é de fundamental importância que as autoridades sanitárias intensifiquem a fiscalização nos estabelecimentos citados, a fim de coibir as irregularidades sanitárias que podem comprometer a saúde da população e garantir que as normas e regulamentações sejam cumpridas, assegurando a qualidade dos serviços prestados e a segurança dos pacientes.`);
+      }
+
+      // Populate evalItems with defaultChecked ones
+      setEvalItems((prev) => {
+        const next = { ...prev };
+        sortedList.forEach(item => {
+           if (item.defaultChecked) {
+              next[item.id] = true;
+           }
+        });
+        return next;
+      });
     };
     fetchDbParams();
   }, []);
@@ -276,9 +309,15 @@ export default function TripOverview({ estabelecimentos, termos }: TripOverviewP
     const cityInscricoes = new Set(cityEstabs.map(e => e.inscricao));
     const qtdAutos = termos.filter(t => t.estabelecimentoId && cityInscricoes.has(t.estabelecimentoId) && t.nrSeqAuto && t.nrSeqAuto !== "null" && t.nrSeqAuto.trim() !== "").length;
 
+    const cityInscricoesWhole = new Set(estabelecimentos.filter(e => e.cidade.toUpperCase() === selectedCity.toUpperCase()).map(e => e.inscricao));
+    const pharmacistsInCity = rts.filter(rt => rt.estabelecimentoId && cityInscricoesWhole.has(rt.estabelecimentoId) && rt.nome && rt.nome !== "null");
+    const uniquePharNames = new Set(pharmacistsInCity.map(rt => rt.nome.trim().toUpperCase()));
+    const qtdFarmaceutico = uniquePharNames.size;
+
     finalIntro = finalIntro.replace(/\[MUNICIPIO\]/g, selectedCity.toUpperCase());
     finalIntro = finalIntro.replace(/\[QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO\]/g, cityEstabs.length.toString());
     finalIntro = finalIntro.replace(/\[QDT_AUTOS_DE_INFRACAO_MUNIC_SELC\]/g, qtdAutos.toString());
+    finalIntro = finalIntro.replace(/\[QTD_FARMACEUTICO\]/g, qtdFarmaceutico.toString());
 
     paragraphs.push(finalIntro);
 
@@ -328,7 +367,7 @@ export default function TripOverview({ estabelecimentos, termos }: TripOverviewP
                        return record[v.fields[0]?.key || "val"] || "";
                     }
                     let fp = v.formatPattern || "";
-                    v.fields.forEach(f => {
+                    (v.fields || []).forEach(f => {
                        const key = `{${f.key}}`;
                        const val = record[f.key] || "";
                        fp = fp.split(key).join(val);
@@ -356,12 +395,20 @@ export default function TripOverview({ estabelecimentos, termos }: TripOverviewP
                     const num = termos.filter(t => t.estabelecimentoId && cityInscricoes.has(t.estabelecimentoId) && t.nrSeqAuto && t.nrSeqAuto !== "null" && t.nrSeqAuto.trim() !== "").length;
                     refValueText = num.toString();
                  }
-                 else if (customVariablesData[refVarId]) {
+                 else if (refVarId === "QTD_FARMACEUTICO") {
+                    const cityInscricoesWholeFl = new Set(estabelecimentos.filter(e => e.cidade.toUpperCase() === selectedCity.toUpperCase()).map(e => e.inscricao));
+                    const pharmacistsInCityFl = rts.filter(rt => rt.estabelecimentoId && cityInscricoesWholeFl.has(rt.estabelecimentoId) && rt.nome && rt.nome !== "null");
+                    const uniquePharNamesFl = new Set(pharmacistsInCityFl.map(rt => rt.nome.trim().toUpperCase()));
+                    refValueText = uniquePharNamesFl.size.toString();
+                 }
+                 else if (refVarId) {
                     const refVDef = dbEvalVariables.find(d => d.id === refVarId);
                     if (refVDef && refVDef.type === "text") {
                        refValueText = customVariablesData[refVarId]?.[0]?.[refVDef.fields[0]?.key || "val"] || "";
+                    } else if (refVDef) {
+                       refValueText = (customVariablesData[refVarId] || []).length.toString();
                     } else {
-                       refValueText = customVariablesData[refVarId].length.toString();
+                       refValueText = "";
                     }
                  }
                  
@@ -374,6 +421,12 @@ export default function TripOverview({ estabelecimentos, termos }: TripOverviewP
                     evalResult = !isNaN(numRef) && !isNaN(numTarget) ? numRef > numTarget : refValueText > target;
                  } else if (v.conditionOperator === "less_than") {
                     evalResult = !isNaN(numRef) && !isNaN(numTarget) ? numRef < numTarget : refValueText < target;
+                 } else if (v.conditionOperator === "greater_equals") {
+                    evalResult = !isNaN(numRef) && !isNaN(numTarget) ? numRef >= numTarget : refValueText >= target;
+                 } else if (v.conditionOperator === "less_equals") {
+                    evalResult = !isNaN(numRef) && !isNaN(numTarget) ? numRef <= numTarget : refValueText <= target;
+                 } else if (v.conditionOperator === "not_equals") {
+                    evalResult = refValueText.toString().toLowerCase() !== target.toLowerCase();
                  } else { // equals
                     evalResult = refValueText.toString().toLowerCase() === target.toLowerCase();
                  }
@@ -393,46 +446,67 @@ export default function TripOverview({ estabelecimentos, termos }: TripOverviewP
     // Also process conditions inside `finalIntro` before returning, but we already added finalIntro to paragraphs!
     // Wait, the variables inside finalIntro were not processed by the condition loop because it was pushed at index 0.
     // Let's re-run condition loop over the entire `joined` text just to be safe!
-    dbEvalVariables.forEach(v => {
-       if (v.type !== "condition") return;
-       const regex = new RegExp(`\\\[${v.id}\\\]`, 'g');
-       if (joined.match(regex)) {
-          let refValueText = "";
-          const refVarId = (v.conditionRefVar || "").replace(/[\[\]]/g, "").trim();
-          
-          if (refVarId === "MUNICIPIO") refValueText = selectedCity.toUpperCase();
-          else if (refVarId === "QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO" || refVarId.includes("INSPECOES")) refValueText = cityEstabs.length.toString();
-          else if (refVarId === "QDT_AUTOS_DE_INFRACAO_MUNIC_SELC" || refVarId.includes("AUTOS")) {
-             const cityInscricoes = new Set(cityEstabs.map(e => e.inscricao));
-             const num = termos.filter(t => t.estabelecimentoId && cityInscricoes.has(t.estabelecimentoId) && t.nrSeqAuto && t.nrSeqAuto !== "null" && t.nrSeqAuto.trim() !== "").length;
-             refValueText = num.toString();
-          }
-          else if (customVariablesData[refVarId]) {
-             const refVDef = dbEvalVariables.find(d => d.id === refVarId);
-             if (refVDef && refVDef.type === "text") {
-                refValueText = customVariablesData[refVarId]?.[0]?.[refVDef.fields[0]?.key || "val"] || "";
-             } else {
-                refValueText = customVariablesData[refVarId].length.toString();
+    let keepRunning = true;
+    let iter = 0;
+    while(keepRunning && iter < 5) {
+       keepRunning = false;
+       iter++;
+       dbEvalVariables.forEach(v => {
+          if (v.type !== "condition") return;
+          const regex = new RegExp(`\\\[${v.id}\\\]`, 'g');
+          if (joined.match(regex)) {
+             keepRunning = true;
+             let refValueText = "";
+             const refVarId = (v.conditionRefVar || "").replace(/[\[\]]/g, "").trim();
+             
+             if (refVarId === "MUNICIPIO") refValueText = selectedCity.toUpperCase();
+             else if (refVarId === "QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO" || refVarId.includes("INSPECOES")) refValueText = cityEstabs.length.toString();
+             else if (refVarId === "QDT_AUTOS_DE_INFRACAO_MUNIC_SELC" || refVarId.includes("AUTOS")) {
+                const cityInscricoes = new Set(cityEstabs.map(e => e.inscricao));
+                const num = termos.filter(t => t.estabelecimentoId && cityInscricoes.has(t.estabelecimentoId) && t.nrSeqAuto && t.nrSeqAuto !== "null" && t.nrSeqAuto.trim() !== "").length;
+                refValueText = num.toString();
              }
+             else if (refVarId === "QTD_FARMACEUTICO") {
+                const cityInscricoesWholeFl = new Set(estabelecimentos.filter(e => e.cidade.toUpperCase() === selectedCity.toUpperCase()).map(e => e.inscricao));
+                const pharmacistsInCityFl = rts.filter(rt => rt.estabelecimentoId && cityInscricoesWholeFl.has(rt.estabelecimentoId) && rt.nome && rt.nome !== "null");
+                const uniquePharNamesFl = new Set(pharmacistsInCityFl.map(rt => rt.nome.trim().toUpperCase()));
+                refValueText = uniquePharNamesFl.size.toString();
+             }
+             else if (refVarId) {
+                const refVDef = dbEvalVariables.find(d => d.id === refVarId);
+                if (refVDef && refVDef.type === "text") {
+                   refValueText = customVariablesData[refVarId]?.[0]?.[refVDef.fields[0]?.key || "val"] || "";
+                } else if (refVDef) {
+                   refValueText = (customVariablesData[refVarId] || []).length.toString();
+                } else {
+                   refValueText = "";
+                }
+             }
+             
+             let evalResult = false;
+             const target = (v.conditionTargetValue || "").trim();
+             let numRef = parseFloat(refValueText);
+             let numTarget = parseFloat(target);
+             
+             if (v.conditionOperator === "greater_than") {
+                evalResult = !isNaN(numRef) && !isNaN(numTarget) ? numRef > numTarget : refValueText > target;
+             } else if (v.conditionOperator === "less_than") {
+                evalResult = !isNaN(numRef) && !isNaN(numTarget) ? numRef < numTarget : refValueText < target;
+             } else if (v.conditionOperator === "greater_equals") {
+                evalResult = !isNaN(numRef) && !isNaN(numTarget) ? numRef >= numTarget : refValueText >= target;
+             } else if (v.conditionOperator === "less_equals") {
+                evalResult = !isNaN(numRef) && !isNaN(numTarget) ? numRef <= numTarget : refValueText <= target;
+             } else if (v.conditionOperator === "not_equals") {
+                evalResult = refValueText.toString().toLowerCase() !== target.toLowerCase();
+             } else { // equals
+                evalResult = refValueText.toString().toLowerCase() === target.toLowerCase();
+             }
+             
+             const replacementText = evalResult ? (v.conditionTrueText || "") : (v.conditionFalseText || "");
+             joined = joined.replace(regex, replacementText);
           }
-          
-          let evalResult = false;
-          const target = (v.conditionTargetValue || "").trim();
-          let numRef = parseFloat(refValueText);
-          let numTarget = parseFloat(target);
-          
-          if (v.conditionOperator === "greater_than") {
-             evalResult = !isNaN(numRef) && !isNaN(numTarget) ? numRef > numTarget : refValueText > target;
-          } else if (v.conditionOperator === "less_than") {
-             evalResult = !isNaN(numRef) && !isNaN(numTarget) ? numRef < numTarget : refValueText < target;
-          } else { // equals
-             evalResult = refValueText.toString().toLowerCase() === target.toLowerCase();
-          }
-          
-          const replacementText = evalResult ? (v.conditionTrueText || "") : (v.conditionFalseText || "");
-          joined = joined.replace(regex, replacementText);
-       }
-    });
+       });
+    }
     
     // Process text Variables for joined text as well
     dbEvalVariables.forEach(v => {
@@ -445,7 +519,7 @@ export default function TripOverview({ estabelecimentos, termos }: TripOverviewP
                 return record[v.fields[0]?.key || "val"] || "";
              }
              let fp = v.formatPattern || "";
-             v.fields.forEach(f => {
+             (v.fields || []).forEach(f => {
                 const key = `{${f.key}}`;
                 const val = record[f.key] || "";
                 fp = fp.split(key).join(val);
@@ -462,6 +536,30 @@ export default function TripOverview({ estabelecimentos, termos }: TripOverviewP
        joined = joined.replace(regex, name.trim());
     });
     joined = joined.replace(/\[PERIODO_DE_FISCALIZAÇÃO\]/g, travelPeriod || "NÃO INFORMADO");
+    joined = joined.replace(/\[QTD_FARMACEUTICO\]/g, qtdFarmaceutico.toString());
+
+    // Process admin template variables (like [NOME_GESTOR], [CARGO_GESTOR], etc.)
+    Object.keys(templateVariables).forEach(key => {
+       const regex = new RegExp(`\\\[${key}\\\]`, 'g');
+       if (joined.match(regex)) {
+          let text = templateVariables[key] || "";
+          // Replace nested tags inside template variables
+          const dateFormatted = new Date().toLocaleDateString('pt-BR', { year: 'numeric', month: 'long', day: 'numeric' });
+          text = text.replace(/<cidade>/gi, selectedCity || "")
+                     .replace(/<municipio>/gi, selectedCity || "")
+                     .replace(/\[CIDADE\]/gi, selectedCity || "")
+                     .replace(/\[MUNICIPIO\]/gi, selectedCity || "")
+                     .replace(/<fiscal>/gi, travelFiscais || "")
+                     .replace(/<inspetor>/gi, travelFiscais || "")
+                     .replace(/\[NOME_FISCAL\]/gi, travelFiscais || "")
+                     .replace(/<data>/gi, dateFormatted)
+                     .replace(/\[DATA\]/gi, dateFormatted)
+                     .replace(/<dados>/gi, dateFormatted)
+                     .replace(/\[DADOS\]/gi, dateFormatted)
+                     .replace(/\[PERIODO_DE_FISCALIZAÇÃO\]/gi, travelPeriod || "NÃO INFORMADO");
+          joined = joined.replace(regex, text);
+       }
+    });
 
     return joined;
   };
@@ -517,11 +615,13 @@ export default function TripOverview({ estabelecimentos, termos }: TripOverviewP
         filteredEstabs,
         termos,
         customAvaliacaoGeralText: compiledText,
-        dateFormat
+        dateFormat,
+        travelPeriod,
+        travelFiscais
       });
     } catch(e) {
       console.error(e);
-      alert("Erro ao exportar");
+      console.error("Erro ao exportar");
     } finally {
       hideLoading();
     }
@@ -564,7 +664,7 @@ export default function TripOverview({ estabelecimentos, termos }: TripOverviewP
       }, travelFiscais);
     } catch (err) {
       console.error(err);
-      alert("Ocorreu um erro ao gerar o arquivo. Verifique o console.");
+      console.error("Ocorreu um erro ao gerar o arquivo. Verifique o console.");
     } finally {
       hideLoading();
     }
@@ -593,7 +693,7 @@ export default function TripOverview({ estabelecimentos, termos }: TripOverviewP
       });
     } catch(e) {
       console.error(e);
-      alert("Erro ao exportar");
+      console.error("Erro ao exportar");
     } finally {
       hideLoading();
     }
@@ -1071,7 +1171,35 @@ export default function TripOverview({ estabelecimentos, termos }: TripOverviewP
                               const hasHospitals = textToSearch.includes("[HOSPITAIS]");
                               const isChecked = !!evalItems[item.id];
                               const isExpanded = !!expandedItems[item.id];
-                              const variablesInThisItem = dbEvalVariables.filter(v => textToSearch.includes(`[${v.id}]`));
+                              const getRequiredVars = (txt: string) => {
+                                let req: any[] = [];
+                                const visited = new Set<string>();
+                                const processText = (text: string) => {
+                                   dbEvalVariables.forEach(v => {
+                                      if (!visited.has(v.id) && text.includes(`[${v.id}]`)) {
+                                         visited.add(v.id);
+                                         if (v.type === "condition") {
+                                            // Handle the referent variable
+                                            const refId = (v.conditionRefVar || "").replace(/[\[\]]/g, "").trim();
+                                            const refVar = dbEvalVariables.find(d => d.id === refId);
+                                            if (refVar && refVar.type !== "condition" && !visited.has(refVar.id)) {
+                                               visited.add(refVar.id);
+                                               req.push(refVar);
+                                            } else if (refVar && refVar.type === "condition") {
+                                                processText(`[${refVar.id}]`);
+                                            }
+                                            // Search its output texts for more placeholders
+                                            processText(`${v.conditionTrueText || ""} ${v.conditionFalseText || ""}`);
+                                         } else {
+                                            req.push(v);
+                                         }
+                                      }
+                                   });
+                                };
+                                processText(txt);
+                                return req;
+                              };
+                              const variablesInThisItem = getRequiredVars(textToSearch);
                               const hasCustomVariables = variablesInThisItem.length > 0;
 
                               return (
@@ -1124,8 +1252,8 @@ export default function TripOverview({ estabelecimentos, termos }: TripOverviewP
                                                     <button 
                                                       type="button"
                                                       onClick={() => {
-                                                        const newRec: Record<string, string> = {};
-                                                        v.fields.forEach(f => newRec[f.key] = "");
+                                                        const newRec = {};
+                                                        (v.fields || []).forEach(f => newRec[f.key] = "");
                                                         setCustomVariablesData({
                                                           ...customVariablesData,
                                                           [v.id]: [...records, newRec]
@@ -1141,20 +1269,46 @@ export default function TripOverview({ estabelecimentos, termos }: TripOverviewP
                                                   <div className="space-y-3">
                                                     {records.map((record, idx) => (
                                                       <div key={idx} className="flex gap-2 items-start relative border-l-2 border-slate-200 pl-3">
-                                                        <div className="flex-1 grid gap-2 grid-cols-1 sm:grid-cols-2">
-                                                          {v.fields.map(f => (
-                                                            <input 
-                                                              key={f.key}
-                                                              type="text" 
-                                                              placeholder={f.placeholder || f.label} 
-                                                              value={record[f.key] || ""} 
-                                                              onChange={(e) => {
-                                                                const newRecords = [...records];
-                                                                newRecords[idx] = { ...newRecords[idx], [f.key]: e.target.value };
-                                                                setCustomVariablesData({ ...customVariablesData, [v.id]: newRecords });
-                                                              }} 
-                                                              className="w-full text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 bg-slate-50 focus:bg-white transition-all" 
-                                                            />
+                                                        <div className="flex-1 grid gap-2 grid-cols-1 md:grid-cols-2">
+                                                          {(v.fields || []).map(f => (
+                                                             <div key={f.key} className="flex flex-col gap-1">
+                                                                {f.inputType === "radio" ? (
+                                                                   <div className="bg-slate-50 p-2 border border-slate-200 rounded-lg">
+                                                                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1.5">{f.label}</span>
+                                                                      <div className="flex flex-wrap gap-2">
+                                                                         {(f.options || []).map((opt, oIdx) => (
+                                                                            <label key={oIdx} className="flex items-center gap-1.5 cursor-pointer text-[10px] font-medium text-slate-700 bg-white border border-slate-200 p-1.5 rounded-md hover:bg-violet-50 hover:border-violet-200 transition-colors">
+                                                                               <input
+                                                                                  type="radio"
+                                                                                  name={`radio_${v.id}_${idx}_${f.key}`}
+                                                                                  value={opt}
+                                                                                  checked={record[f.key] === opt}
+                                                                                  onChange={() => {
+                                                                                     const newRecords = [...records];
+                                                                                     newRecords[idx] = { ...newRecords[idx], [f.key]: opt };
+                                                                                     setCustomVariablesData({ ...customVariablesData, [v.id]: newRecords });
+                                                                                  }}
+                                                                                  className="w-3 h-3 text-violet-600 focus:ring-violet-500 cursor-pointer"
+                                                                               />
+                                                                               {opt}
+                                                                            </label>
+                                                                         ))}
+                                                                      </div>
+                                                                   </div>
+                                                                ) : (
+                                                                    <input 
+                                                                      type="text" 
+                                                                      placeholder={f.placeholder || f.label} 
+                                                                      value={record[f.key] || ""} 
+                                                                      onChange={(e) => {
+                                                                        const newRecords = [...records];
+                                                                        newRecords[idx] = { ...newRecords[idx], [f.key]: e.target.value };
+                                                                        setCustomVariablesData({ ...customVariablesData, [v.id]: newRecords });
+                                                                      }}
+                                                                      className="w-full text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 bg-slate-50 focus:bg-white transition-all h-full" 
+                                                                    />
+                                                                )}
+                                                             </div>
                                                           ))}
                                                         </div>
                                                         <button 
@@ -1170,7 +1324,7 @@ export default function TripOverview({ estabelecimentos, termos }: TripOverviewP
                                                       </div>
                                                     ))}
                                                     {records.length === 0 && (
-                                                      <p className="text-[10px] text-slate-400 italic">Nenhum {v.name.toLowerCase()} adicionado. Clique no botão acima para adicionar.</p>
+                                                      <p className="text-[10px] text-slate-400 italic">Nenhum registro adicionado. Clique em "Adicionar".</p>
                                                     )}
                                                   </div>
                                                 ) : (
