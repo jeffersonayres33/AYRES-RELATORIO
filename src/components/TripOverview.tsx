@@ -44,7 +44,7 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
   const [travelFiscais, setTravelFiscais] = useState<string>("");
   const [travelPeriod, setTravelPeriod] = useState<string>("15/05/2026 a 22/05/2026");
   const [includeClosed, setIncludeClosed] = useState<boolean>(false);
-  const [autoCorrectText, setAutoCorrectText] = useState<boolean>(true);
+  const [autoCorrectText, setAutoCorrectText] = useState<boolean>(false);
   const [dateFormat, setDateFormat] = useState<"apenas_data" | "data_hora" | "sem_data">("apenas_data");
 
   React.useEffect(() => {
@@ -57,6 +57,64 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
     if (inspetores.size > 0) {
       setTravelFiscais(Array.from(inspetores).join(" / "));
     }
+
+    if (termos && termos.length > 0) {
+      let minDate: Date | null = null;
+      let maxDate: Date | null = null;
+
+      termos.forEach(t => {
+        if (!t.dtInicio || t.dtInicio === "null" || t.dtInicio === "NÃO INFORMADO") return;
+        
+        const parts = t.dtInicio.trim().split(/\s+/);
+        if (parts.length === 0) return;
+        
+        const datePart = parts[0];
+        const dateMatch = datePart.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+        if (!dateMatch) return;
+        
+        const day = parseInt(dateMatch[1], 10);
+        const month = parseInt(dateMatch[2], 10) - 1;
+        const yearStr = dateMatch[3];
+        let year = parseInt(yearStr, 10);
+        if (yearStr.length === 2) {
+          year += 2000;
+        }
+        
+        let hr = 0, min = 0, sec = 0;
+        if (parts.length > 1) {
+          const timeMatch = parts[1].match(/^(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?$/);
+          if (timeMatch) {
+            hr = parseInt(timeMatch[1], 10);
+            min = parseInt(timeMatch[2], 10);
+            if (timeMatch[3]) {
+              sec = parseInt(timeMatch[3], 10);
+            }
+          }
+        }
+        
+        const currentDt = new Date(year, month, day, hr, min, sec);
+        if (!isNaN(currentDt.getTime())) {
+          if (!minDate || currentDt < minDate) {
+            minDate = currentDt;
+          }
+          if (!maxDate || currentDt > maxDate) {
+            maxDate = currentDt;
+          }
+        }
+      });
+
+      if (minDate && maxDate) {
+        const formatZero = (num: number) => String(num).padStart(2, '0');
+        const minStr = `${formatZero((minDate as Date).getDate())}/${formatZero((minDate as Date).getMonth() + 1)}/${(minDate as Date).getFullYear()}`;
+        const maxStr = `${formatZero((maxDate as Date).getDate())}/${formatZero((maxDate as Date).getMonth() + 1)}/${(maxDate as Date).getFullYear()}`;
+        
+        if (minStr === maxStr) {
+          setTravelPeriod(minStr);
+        } else {
+          setTravelPeriod(`${minStr} a ${maxStr}`);
+        }
+      }
+    }
   }, [termos]);
 
   // Checks if an establishment was found closed
@@ -68,11 +126,8 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
   }, [termos]);
 
   const visibleEstabelecimentos = React.useMemo(() => {
-    return estabelecimentos.filter(e => {
-      if (includeClosed) return true;
-      return !isEstabClosed(e);
-    });
-  }, [estabelecimentos, includeClosed, isEstabClosed]);
+    return estabelecimentos;
+  }, [estabelecimentos]);
 
   // 3. DA AVALIAÇÃO GERAL Modal & Toggles State
   const [isEvalModalOpen, setIsEvalModalOpen] = useState(false);
@@ -199,33 +254,70 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
       return matchInEstabs;
     };
 
-    const lackReceit = hasMatch(/receitu[áa]rio|prescri[çc][ãa]o/i) && 
-                       (hasMatch(/falta|aus[êe]ncia|n[ãa]o\s+fornecido|sem|indispon/i) || hasMatch(/prefeitura|municipal/i));
+    // 1. HIGH-FIDELITY REFINED REGULAR EXPRESSIONS & HEURISTICS
+    // 1.1 Ausência de Receituários Especiais
+    const lackReceit = (
+      hasMatch(/receitu[áa]rio|prescri[çc][ãa]o|notifica[çc][ãa]o\s+de\s+receita|medicamento.*controle\s+especial|portaria\s*344/i) && 
+      (hasMatch(/falta|aus[êe]ncia|n[ãa]o\s+fornecido|sem|indispon|n[ãa]o\s+dispon|n[ãa]o\s+possui|ausente/i) || hasMatch(/prefeitura|municipal/i))
+    );
 
-    const defInjet = hasMatch(/injet[áa]vel|inje[çc][ãa]o|sala.*aplica[çc][ãa]o|pia|lavagem|privacidade/i);
+    // 1.2 Deficiências em Salas de Injetáveis
+    const defInjet = hasMatch(/injet[áa]vel|inje[çc]ao|inje[çc][õo]es|aplica[çc][ãa]o|sala.*aplica[çc][ãa]o|pia|lavagem|lavar.*m[ãa]os|privacidade|RDC\s*44|declara[çc][ãa]o.*servi[çc]o/i);
 
-    const faltaAfe = hasMatch(/afe|autoriza[çc][ãa]o.*funcionamento|alvar[áa]|licen[çc]a|licenciamento/i) && 
-                     hasMatch(/falta|aus[êe]ncia|n[ãa]o\s+possu[íi]|vencido|vencida|sem|desconformidade/i);
+    // 1.3 Ausência de AFE expedida pela ANVISA e Alvará Sanitário
+    const faltaAfe = (
+      hasMatch(/AFE|autoriza[çc][ãa]o\s+de\s+funcionamento|alvar[áa]\s+sanit[áa]rio|licen[çc]a\s+sanit[áa]ria|licenciamento|licen[çc]a\s+sanitaria|RDC\s*44\/2009/i) &&
+      (hasMatch(/falta|aus[êe]ncia|n[ãa]o\s+possu[íi]|vencid[oa]|sem|irregular|inexist/i) || 
+       hasMatch(/sem\s+AFE|n[ãa]o\s+apresentou\s+AFE|sem\s+alvar/i))
+    );
 
+    // 1.4 Irregularidades Críticas de Infraestrutura (Laboratório)
     const isLab = cityEstabs.some(e => /laborat[óo]rio|analises.*clinicas/i.test(`${e.fantasia} ${e.razaoSocial} ${e.nomeArea || ""}`));
-    const labInfra = isLab || (hasMatch(/infiltra[çc][ãa]o|reagente|geladeira|temperatura/i) && hasMatch(/laborat[óo]rio|infraestrutura/i));
+    const labInfra = isLab || (
+      hasMatch(/infiltra[çc][ãa]o|mofo|goteira|reagente|geladeira|temperatura|piso|parede|bancada|equipamento|estufa|centr[íi]fuga|condi[çc][ãa]o\s+inadequada|desorganiza[çc][ãa]o|armazenamento\s+irregular|limpeza/i) && 
+      hasMatch(/laborat[óo]rio|fisioterapia|cl[íi]nica/i)
+    );
 
-    const laminas = hasMatch(/l[âa]mina|biom[ée]dica|laudo|em\s+branco|laudos.*assinados/i) && hasMatch(/laborat[óo]rio|analises.*clinicas|patologia/i);
+    // 1.5 Leitura de Lâminas por Profissional Não Habilitado (Laboratório)
+    const laminas = (
+      hasMatch(/l[âa]mina|biom[ée]dic|laudo|em\s+branco|laudos.*assinados|patologia/i) && 
+      (hasMatch(/t[ée]cnico|auxiliar|n[ãa]o\s+habilitado|sem\s+presen[çc]a|aus[êe]ncia|sem\s+farmac[êe]utico/i) || 
+       cityTermos.some(t => t.rtPresente === "NÃO" && /lamin/i.test(t.obs || "")))
+    );
 
-    const lackUbs = hasMatch(/ubs|posto.*sa[úu]de|unidade.*b[áa]sica|caf/i) && hasMatch(/falta|aus[êe]ncia|sem\s+farmac[êe]utico/i);
+    // 1.6 Ausência de Farmacêutico nas UBS
+    const ubsInvolved = hasMatch(/ubs|posto.*sa[úu]de|unidade.*b[áa]sica|caf|central.*abastecimento/i);
+    const lackUbs = (
+      (ubsInvolved && hasMatch(/falta|aus[êe]ncia|sem\s+farmac[êe]utico|desprovido|sem\s+assist[êe]ncia|assist[êe]ncia\s+farmac[êe]utica|car[êe]ncia/i)) ||
+      cityTermos.some(t => t.rtPresente === "NÃO" && /ubs|posto|unidade|saude|caf/i.test(t.obs || ""))
+    );
 
-    const cftRemume = hasMatch(/cft|remume|comiss[ãa]o.*farm[áa]cia|rela[çc][ãa]o.*medicamento/i);
+    // 1.7 Orientação para Instituição da CFT e REMUME
+    const cftRemume = (
+      hasMatch(/cft|remume|comiss[ãa]o.*farm[áa]cia|rela[çc][ãa]o.*medicamento|padroniza[çc][ãa]o|sele[çc][ãa]o/i) ||
+      (ubsInvolved && !hasMatch(/comiss[ãa]o.*terap[êe]utica|cft\s+ativa/i))
+    );
 
-    const horus = hasMatch(/h[óo]rus|horus|sistema.*h[óo]rus/i);
+    // 1.8 Sugestão de Implementação do Sistema HÓRUS
+    const horus = hasMatch(/h[óo]rus|horus|sistema.*h[óo]rus|informatiza[çc][ãa]o|controle\s+de\s+estoque|rastreabilidade/i);
 
+    // 1.9 Fragilidades na Rotina da farmácia Hospitalar
     const containsHospital = cityEstabs.some(e => /hospital|maternidade/i.test(`${e.fantasia} ${e.razaoSocial}`));
-    const hospitalFragil = containsHospital || hasMatch(/dupla\s+chegagem|seguran[çc]a\s+do\s+paciente|concilia[çc][ãa]o\s+medicamentosa|fracionamento|hospitalar/i);
+    const hospitalFragil = containsHospital || (
+      hasMatch(/dupla\s+chegagem|seguran[çc]a\s+do\s+paciente|concilia[çc][ãa]o\s+medicamentosa|fracionamento|quantitativo.*insuficiente/i) ||
+      cityTermos.some(t => t.rtPresente === "NÃO" && /hospital/i.test(t.obs || ""))
+    );
 
-    const carona = hasMatch(/carona|licita[çc][ãa]o|preg[ãa]o|preg[oõ]es|Lei\s*14\.133/i);
+    // 1.10 Recomendação de Adesão/Caronas em Licitações
+    const carona = hasMatch(/carona|licita[çc][ãa]o|preg[ãa]o|preg[oõ]es|Lei\s*14\.133|economicidade|desabastecimento|comprar|aquisi[çc][ãa]o|secret[áa]rio/i);
 
-    const vendaMercado = cityEstabs.some(e => /supermercado|mercado|mercearia|kitanda/i.test(`${e.fantasia} ${e.razaoSocial} ${e.nomeArea || ""}`)) ||
-                         hasMatch(/venda\s+irregular|supermercado|kitanda/i);
+    // 1.11 Venda Irregular de Medicamentos em Supermercados
+    const vendaMercado = (
+      cityEstabs.some(e => /supermercado|mercado|mercearia|kitanda/i.test(`${e.fantasia} ${e.razaoSocial} ${e.nomeArea || ""}`)) ||
+      hasMatch(/venda\s+irregular|venda.*supermercado|exposto\s+a\s+venda|comercializa[çc][ãa]o\s+de\s+medicamento|venda.*g[êe]neros\s+aliment[íi]cios/i)
+    );
 
+    // Apply standard labs and hospital state setters
     const labEstabs = cityEstabs.filter(e => /laborat[óo]rio|analises.*clinicas/i.test(`${e.fantasia} ${e.razaoSocial} ${e.nomeArea || ""}`));
     if (labEstabs.length > 0) {
       setLabsInfra(labEstabs.map(le => ({ nome: le.fantasia.toUpperCase(), cnpj: le.cnpj })));
@@ -242,24 +334,115 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
       setHospitals([{ nome: "REGIONAL DE TEFÉ" }]);
     }
 
+    // 2. DYNAMIC MATCHER FOR EXTRA/CUSTOM DB ITEMS
+    const getDynamicMatch = (itemTitle: string, itemDescription: string, itemParagraph: string) => {
+      const combinedText = `${itemTitle} ${itemDescription || ""} ${itemParagraph || ""}`.toLowerCase();
+      
+      const stopWords = new Set([
+        "para", "como", "esta", "com", "uma", "uns", "pela", "pelo", "onde", "dentro", "sobre", "entre", "algum", 
+        "seria", "mais", "fiel", "possivel", "pelas", "pelos", "este", "estes", "esta", "estas", "tudo", "todo", 
+        "todos", "cada", "deve", "devem", "geral", "específica", "qualquer", "alguma", "algumas", "alguns", 
+        "outra", "outras", "outro", "outros", "através", "conforme", "diante", "desde", "pode", "podem", "sem", "não", "nas"
+      ]);
+      
+      const words = combinedText
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "") // remove diacritics
+        .replace(/[^a-z0-9\s]/g, " ")
+        .split(/\s+/)
+        .filter(w => w.length >= 4 && !stopWords.has(w));
+
+      if (words.length === 0) return false;
+
+      let matchCount = 0;
+      const uniqueWords = Array.from(new Set(words));
+      
+      const obsTexts = cityTermos
+        .map(t => (t.obs || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""))
+        .join(" ");
+
+      const estabTexts = cityEstabs
+        .map(e => `${e.fantasia} ${e.razaoSocial} ${e.nomeArea || ""}`.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""))
+        .join(" ");
+
+      const searchTargetText = `${obsTexts} ${estabTexts}`;
+
+      uniqueWords.forEach(word => {
+        if (searchTargetText.includes(word)) {
+          matchCount++;
+        }
+      });
+
+      // Threshold is 25% of unique key words or minimum 2 matched words
+      const threshold = Math.min(2, Math.ceil(uniqueWords.length * 0.25));
+      return matchCount >= threshold;
+    };
+
+    // 3. SEMANTIC ROUTER FOR DB-LOADED ITEMS
+    const findRefinedMatch = (item: any) => {
+      const id = (item.id || "").toLowerCase();
+      const title = (item.title || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const desc = (item.description || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const para = (item.paragraph || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const combined = `${id} ${title} ${desc} ${para}`;
+
+      // 3.1 Receita / Receituários
+      if (combined.includes("receit") || combined.includes("prescri") || combined.includes("notificac") || combined.includes("controle especial") || combined.includes("portaria 344") || id === "hasfaltareceituario") {
+        return lackReceit;
+      }
+      // 3.2 Injetáveis / Aplicação
+      if (combined.includes("injet") || combined.includes("sala") || combined.includes("aplica") || combined.includes("inje") || combined.includes("rdc 44") || combined.includes("rdc44") || id === "hasdeficienciainjetaveis") {
+        return defInjet;
+      }
+      // 3.3 AFE / Alvará Sanitário / Licença
+      if (combined.includes("afe") || combined.includes("alvara") || combined.includes("licen") || combined.includes("autorizac") || combined.includes("anvisa") || id === "hasfaltaafealvarares") {
+        return faltaAfe;
+      }
+      // 3.4 Laboratório / Infraestrutura
+      if (id === "hasirregularidadelabinfra" || (combined.includes("laborat") && (combined.includes("infra") || combined.includes("estrut") || combined.includes("conser") || combined.includes("mofo") || combined.includes("reagent") || combined.includes("geladeir")))) {
+        return labInfra;
+      }
+      // 3.5 Lâminas (Leitura por leigo)
+      if (combined.includes("lamina") || combined.includes("laudo") || combined.includes("biomed") || combined.includes("patolog") || id === "hasleituralaminassemfarmac") {
+        return laminas;
+      }
+      // 3.6 Farmacêutico nas UBS
+      if (combined.includes("ubs") || combined.includes("posto") || combined.includes("unidade basica") || combined.includes("central de abastecimento") || combined.includes("caf") || id === "hasfaltafarmacubs") {
+        return lackUbs;
+      }
+      // 3.7 CFT / REMUME
+      if (combined.includes("cft") || combined.includes("remume") || combined.includes("comiss") || combined.includes("terapeut") || combined.includes("padronizac") || id === "hasorientacaocftremume") {
+        return cftRemume;
+      }
+      // 3.8 HÓRUS
+      if (combined.includes("horus") || combined.includes("sist") || id === "hasimplementacaohorus") {
+        return horus;
+      }
+      // 3.9 Hospital / Farmácia Hospitalar
+      if (combined.includes("hospital") || combined.includes("matern") || combined.includes("fracion") || combined.includes("dupla ch") || id === "hasfragilidadehospital") {
+        return hospitalFragil;
+      }
+      // 3.10 Carona / Licitações
+      if (combined.includes("carona") || combined.includes("licit") || combined.includes("pregao") || combined.includes("lei 14.133") || combined.includes("lei 14133") || id === "hascaronalicitacao") {
+        return carona;
+      }
+      // 3.11 Supermercado / Venda Irregular
+      if (combined.includes("supermerc") || combined.includes("mercado") || combined.includes("mercear") || combined.includes("kitand") || combined.includes("alimen") || combined.includes("venda irregular") || id === "hasvendasupermercado") {
+        return vendaMercado;
+      }
+      // 3.12 Apelo
+      if (combined.includes("apelo") || combined.includes("fiscalizac") || id === "hasapelofiscalizacao") {
+        return true;
+      }
+
+      // Default fallback: use the dynamic text overlap matcher!
+      return getDynamicMatch(item.title || "", item.description || "", item.paragraph || "");
+    };
+
     const newEvals: Record<string, boolean> = {};
     dbEvalItems.forEach(item => {
-      newEvals[item.id] = item.defaultChecked || false;
+      newEvals[item.id] = item.defaultChecked || findRefinedMatch(item);
     });
-
-    // Auto-analysis overwrites for standard items based on detected phrases
-    newEvals.hasFaltaReceituario = newEvals.hasFaltaReceituario || lackReceit;
-    newEvals.hasDeficienciaInjetaveis = newEvals.hasDeficienciaInjetaveis || defInjet;
-    newEvals.hasFaltaAfeAlvarares = newEvals.hasFaltaAfeAlvarares || faltaAfe;
-    newEvals.hasIrregularidadeLabInfra = newEvals.hasIrregularidadeLabInfra || labInfra;
-    newEvals.hasLeituraLaminasSemFarmac = newEvals.hasLeituraLaminasSemFarmac || laminas;
-    newEvals.hasFaltaFarmacUbs = newEvals.hasFaltaFarmacUbs || lackUbs;
-    newEvals.hasOrientacaoCftRemume = newEvals.hasOrientacaoCftRemume || cftRemume;
-    newEvals.hasImplementacaoHorus = newEvals.hasImplementacaoHorus || horus;
-    newEvals.hasFragilidadeHospital = newEvals.hasFragilidadeHospital || hospitalFragil;
-    newEvals.hasCaronaLicitacao = newEvals.hasCaronaLicitacao || carona;
-    newEvals.hasVendaSupermercado = newEvals.hasVendaSupermercado || vendaMercado;
-    newEvals.hasApeloFiscalizacao = true;
 
     setEvalItems(newEvals);
   };
@@ -275,6 +458,12 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
     }
   }, [uniqueCities, selectedCity]);
 
+  React.useEffect(() => {
+    if (selectedCity && autoMarkActive && dbEvalItems.length > 0) {
+      autoMarkFromXml();
+    }
+  }, [selectedCity, autoMarkActive, dbEvalItems, visibleEstabelecimentos, termos]);
+
   // Aggregate stats per city
   const citySummaries = React.useMemo(() => uniqueCities.map(city => {
     const cityEstabs = visibleEstabelecimentos.filter(e => e.cidade.toUpperCase() === city);
@@ -285,6 +474,7 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
     const totalIntimacoes = cityTermos.filter(t => t.nrSeqIntimacao && t.nrSeqIntimacao !== "null").length;
     const totalAutos = cityTermos.filter(t => t.nrSeqAuto && t.nrSeqAuto !== "null").length;
     const novos = cityEstabs.filter(e => e.inscricao.toUpperCase().includes("I")).length;
+    const fechadas = cityEstabs.filter(e => isEstabClosed(e)).length;
 
     return {
       cidade: city,
@@ -292,21 +482,22 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
       intimacoes: totalIntimacoes,
       autos: totalAutos,
       novos,
+      fechadas,
       estabelecimentos: cityEstabs
     };
-  }), [uniqueCities, visibleEstabelecimentos, termos]);
+  }), [uniqueCities, visibleEstabelecimentos, termos, isEstabClosed]);
 
   const activeSum = citySummaries.find(s => s.cidade === selectedCity);
   const cityEstabs = activeSum ? activeSum.estabelecimentos : [];
 
   // Dynaimc text compiled based on checkboxes status
-  const getCompiledEvaluationText = () => {
+  const getCompiledEvaluationText = (targetEstabs: Estabelecimento[] = cityEstabs) => {
     const paragraphs: string[] = [];
 
     // Base Intro
     let finalIntro = dbEvalIntroText;
     
-    const cityInscricoes = new Set(cityEstabs.map(e => e.inscricao));
+    const cityInscricoes = new Set(targetEstabs.map(e => e.inscricao));
     const qtdAutos = termos.filter(t => t.estabelecimentoId && cityInscricoes.has(t.estabelecimentoId) && t.nrSeqAuto && t.nrSeqAuto !== "null" && t.nrSeqAuto.trim() !== "").length;
 
     const cityInscricoesWhole = new Set(estabelecimentos.filter(e => e.cidade.toUpperCase() === selectedCity.toUpperCase()).map(e => e.inscricao));
@@ -315,7 +506,7 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
     const qtdFarmaceutico = uniquePharNames.size;
 
     finalIntro = finalIntro.replace(/\[MUNICIPIO\]/g, selectedCity.toUpperCase());
-    finalIntro = finalIntro.replace(/\[QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO\]/g, cityEstabs.length.toString());
+    finalIntro = finalIntro.replace(/\[QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO\]/g, targetEstabs.length.toString());
     finalIntro = finalIntro.replace(/\[QDT_AUTOS_DE_INFRACAO_MUNIC_SELC\]/g, qtdAutos.toString());
     finalIntro = finalIntro.replace(/\[QTD_FARMACEUTICO\]/g, qtdFarmaceutico.toString());
 
@@ -389,9 +580,9 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
                  
                  // System variables
                  if (refVarId === "MUNICIPIO") refValueText = selectedCity.toUpperCase();
-                 else if (refVarId === "QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO" || refVarId.includes("INSPECOES")) refValueText = cityEstabs.length.toString();
+                 else if (refVarId === "QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO" || refVarId.includes("INSPECOES")) refValueText = targetEstabs.length.toString();
                  else if (refVarId === "QDT_AUTOS_DE_INFRACAO_MUNIC_SELC" || refVarId.includes("AUTOS")) {
-                    const cityInscricoes = new Set(cityEstabs.map(e => e.inscricao));
+                    const cityInscricoes = new Set(targetEstabs.map(e => e.inscricao));
                     const num = termos.filter(t => t.estabelecimentoId && cityInscricoes.has(t.estabelecimentoId) && t.nrSeqAuto && t.nrSeqAuto !== "null" && t.nrSeqAuto.trim() !== "").length;
                     refValueText = num.toString();
                  }
@@ -460,9 +651,9 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
              const refVarId = (v.conditionRefVar || "").replace(/[\[\]]/g, "").trim();
              
              if (refVarId === "MUNICIPIO") refValueText = selectedCity.toUpperCase();
-             else if (refVarId === "QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO" || refVarId.includes("INSPECOES")) refValueText = cityEstabs.length.toString();
+             else if (refVarId === "QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO" || refVarId.includes("INSPECOES")) refValueText = targetEstabs.length.toString();
              else if (refVarId === "QDT_AUTOS_DE_INFRACAO_MUNIC_SELC" || refVarId.includes("AUTOS")) {
-                const cityInscricoes = new Set(cityEstabs.map(e => e.inscricao));
+                const cityInscricoes = new Set(targetEstabs.map(e => e.inscricao));
                 const num = termos.filter(t => t.estabelecimentoId && cityInscricoes.has(t.estabelecimentoId) && t.nrSeqAuto && t.nrSeqAuto !== "null" && t.nrSeqAuto.trim() !== "").length;
                 refValueText = num.toString();
              }
@@ -569,6 +760,7 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
     
     // Filter establishments in this city
     const filteredEstabs = cityEstabs.filter(e => {
+      if (!includeClosed && isEstabClosed(e)) return false;
       const t = termos.find(term => term.estabelecimentoId === e.inscricao);
       const isIntimado = !!(t?.nrSeqIntimacao && t.nrSeqIntimacao !== "null");
       const isAutuado = !!(t?.nrSeqAuto && t.nrSeqAuto !== "null");
@@ -586,7 +778,7 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
       intimados_autuados: "Estabelecimentos Intimados e Autuados"
     };
 
-    let compiledText = getCompiledEvaluationText();
+    let compiledText = getCompiledEvaluationText(filteredEstabs);
     
     if (autoCorrectText) {
       showLoading("Revisando texto com IA (Isso pode demorar alguns segundos)...");
@@ -632,6 +824,7 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
     
     // Filter establishments in this city
     const filteredEstabs = cityEstabs.filter(e => {
+      if (!includeClosed && isEstabClosed(e)) return false;
       const t = termos.find(term => term.estabelecimentoId === e.inscricao);
       const isIntimado = !!(t?.nrSeqIntimacao && t.nrSeqIntimacao !== "null");
       const isAutuado = !!(t?.nrSeqAuto && t.nrSeqAuto !== "null");
@@ -649,7 +842,7 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
       intimados_autuados: "Estabelecimentos Intimados e Autuados"
     };
 
-    const compiledText = getCompiledEvaluationText();
+    const compiledText = getCompiledEvaluationText(filteredEstabs);
     
     showLoading("Gerando documento, por favor aguarde...");
     try {
@@ -671,13 +864,33 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
   };
 
   const downloadTravelSummary = async () => {
-    const totalEstabs = visibleEstabelecimentos.length;
-    const totalTermos = termos.filter(t => visibleEstabelecimentos.some(e => e.inscricao === t.estabelecimentoId)).length;
+    // Generate filtered establishments based on includeClosed flag for each city inside travel summary
+    const filteredCitySummaries = citySummaries.map(sum => {
+      const filteredEsts = sum.estabelecimentos.filter(e => includeClosed || !isEstabClosed(e));
+      const filteredIds = filteredEsts.map(e => e.inscricao);
+      const filteredCityTermos = termos.filter(t => filteredIds.includes(t.estabelecimentoId));
+      
+      const totalInspecoes = filteredCityTermos.length;
+      const totalIntimacoes = filteredCityTermos.filter(t => t.nrSeqIntimacao && t.nrSeqIntimacao !== "null").length;
+      const totalAutos = filteredCityTermos.filter(t => t.nrSeqAuto && t.nrSeqAuto !== "null").length;
+      const novos = filteredEsts.filter(e => e.inscricao.toUpperCase().includes("I")).length;
+
+      return {
+        ...sum,
+        inspecoes: totalInspecoes,
+        intimacoes: totalIntimacoes,
+        autos: totalAutos,
+        novos,
+        estabelecimentos: filteredEsts
+      };
+    });
+
+    const totalTermos = filteredCitySummaries.reduce((acc, s) => acc + s.inspecoes, 0);
     
     const countFiscalizados = totalTermos;
-    const countIntimados = termos.filter(t => visibleEstabelecimentos.some(e => e.inscricao === t.estabelecimentoId) && t.nrSeqIntimacao && t.nrSeqIntimacao !== "null").length;
-    const countAutuados = termos.filter(t => visibleEstabelecimentos.some(e => e.inscricao === t.estabelecimentoId) && t.nrSeqAuto && t.nrSeqAuto !== "null").length;
-    const countNovos = visibleEstabelecimentos.filter(e => e.isClandestina || e.inscricao.toUpperCase().includes("I")).length;
+    const countIntimados = filteredCitySummaries.reduce((acc, s) => acc + s.intimacoes, 0);
+    const countAutuados = filteredCitySummaries.reduce((acc, s) => acc + s.autos, 0);
+    const countNovos = filteredCitySummaries.reduce((acc, s) => acc + s.novos, 0);
 
     showLoading("Gerando resumo de viagem...");
     try {
@@ -689,7 +902,7 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
         countIntimados,
         countAutuados,
         countNovos,
-        citySummaries
+        citySummaries: filteredCitySummaries
       });
     } catch(e) {
       console.error(e);
@@ -787,6 +1000,12 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
                 <div className="p-3 bg-emerald-50/40 border border-emerald-100/30 rounded-2xl flex flex-col justify-between">
                   <span className="block font-extrabold text-slate-400 uppercase tracking-wider text-[8px]">Novas Empresas</span>
                   <span className="font-mono font-black text-base text-emerald-600 block mt-1">{sum.novos}</span>
+                </div>
+
+                {/* Fechadas */}
+                <div className="p-3 bg-slate-50 border border-slate-200/50 rounded-2xl flex flex-col justify-between col-span-2">
+                  <span className="block font-extrabold text-slate-400 uppercase tracking-wider text-[8px]">Fechadas</span>
+                  <span className="font-mono font-black text-base text-slate-600 block mt-1">{sum.fechadas}</span>
                 </div>
               </div>
             </button>
