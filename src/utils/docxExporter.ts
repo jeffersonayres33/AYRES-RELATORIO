@@ -404,7 +404,6 @@ No Município de [MUNICIPIO] foram realizadas [QUANTIDADE_INSPEÇÕES_NO_MUNICIP
           size: 24,
           before: 100,
           after: 200,
-          indent: true,
         }
       )
     );
@@ -566,7 +565,6 @@ No Município de [MUNICIPIO] foram realizadas [QUANTIDADE_INSPEÇÕES_NO_MUNICIP
                 before: 60,
                 after: 60,
                 bold: hasConforme,
-                indent: true,
               })
             );
           }
@@ -773,7 +771,7 @@ export const exportFullMunicipalDocx = async (
 
   if (!assessmentText.includes("4. DA AVALIAÇÃO ESPECÍFICA DE CADA ESTABELECIMENTO")) {
     relatorioSimplesXml += pBold("4. DA AVALIAÇÃO ESPECÍFICA DE CADA ESTABELECIMENTO");
-    relatorioSimplesXml += pWithIndent(r("Em virtude do risco sanitário e das irregularidades identificadas perante o CRF/AM, será realizada uma análise individualizada de alguns estabelecimentos afetados. Essa medida visa fornecer informações detalhadas aos órgãos competentes, garantindo que as devidas providências sejam tomadas para assegurar a conformidade e a segurança na prestação de serviços farmacêuticos."));
+    relatorioSimplesXml += p(r("Em virtude do risco sanitário e das irregularidades identificadas perante o CRF/AM, será realizada uma análise individualizada de alguns estabelecimentos afetados. Essa medida visa fornecer informações detalhadas aos órgãos competentes, garantindo que as devidas providências sejam tomadas para assegurar a conformidade e a segurança na prestação de serviços farmacêuticos."));
   }
 
   if (filteredEstabs.length === 0) {
@@ -877,7 +875,7 @@ export const exportFullMunicipalDocx = async (
             if (isTopic) {
               relatorioSimplesXml += pBold(trimmed);
             } else {
-              relatorioSimplesXml += pWithIndent(r(trimmed));
+              relatorioSimplesXml += p(r(trimmed));
             }
           }
         });
