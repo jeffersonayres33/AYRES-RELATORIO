@@ -32,6 +32,8 @@ export interface ExportMunicipalProps {
   crfFiscalStr?: string;
   sexoFiscalStr?: string;
   customTemplateVariables?: Record<string, string>;
+  totalInspecoes?: number;
+  totalAutos?: number;
 }
 
 // Global variable replacement helper
@@ -43,7 +45,8 @@ export const replaceVarMatches = (
   crfFiscalStr: string,
   sexoFiscalStr: string,
   customVars: Record<string, string> = {},
-  filteredEstabsCount?: number
+  filteredEstabsCount?: number,
+  totalAutosCount?: number
 ): string => {
   if (!text) return "";
   let res = text;
@@ -51,6 +54,7 @@ export const replaceVarMatches = (
   const dateFormatted = new Date().toLocaleDateString('pt-BR', { year: 'numeric', month: 'long', day: 'numeric' });
   const localDataStr = `${selectedCity}, ${dateFormatted}`;
   const countStr = filteredEstabsCount !== undefined ? String(filteredEstabsCount) : "0";
+  const autosStr = totalAutosCount !== undefined ? String(totalAutosCount) : "0";
 
   res = res.replace(/\[MUNICIPIO\]/gi, selectedCity || "")
            .replace(/\[CIDADE\]/gi, selectedCity || "")
@@ -71,7 +75,9 @@ export const replaceVarMatches = (
            .replace(/<inspetor>/gi, nomeFiscalStr || "")
            .replace(/\[QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO\]/gi, countStr)
            .replace(/\[QUANTIDADE_INSPECOES_NO_MUNICIPIO_SELECIONADO\]/gi, countStr)
-           .replace(/\[QUANTIDADE_EMPRESAS_NO_MUNICIPIO_SELECIONADO\]/gi, countStr);
+           .replace(/\[QUANTIDADE_EMPRESAS_NO_MUNICIPIO_SELECIONADO\]/gi, countStr)
+           .replace(/\[QDT_AUTOS_DE_INFRACAO_MUNIC_SELC\]/gi, autosStr)
+           .replace(/\[QTD_AUTOS_DE_INFRACAO_MUNIC_SELC\]/gi, autosStr);
 
   // Replacement of admin custom variables [KEYS]
   Object.keys(customVars).forEach(key => {
@@ -91,7 +97,9 @@ export const replaceVarMatches = (
                .replace(/\[SEXO_FISCAL\]/gi, sexoFiscalStr || "")
                .replace(/\[QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO\]/gi, countStr)
                .replace(/\[QUANTIDADE_INSPECOES_NO_MUNICIPIO_SELECIONADO\]/gi, countStr)
-               .replace(/\[QUANTIDADE_EMPRESAS_NO_MUNICIPIO_SELECIONADO\]/gi, countStr);
+               .replace(/\[QUANTIDADE_EMPRESAS_NO_MUNICIPIO_SELECIONADO\]/gi, countStr)
+               .replace(/\[QDT_AUTOS_DE_INFRACAO_MUNIC_SELC\]/gi, autosStr)
+               .replace(/\[QTD_AUTOS_DE_INFRACAO_MUNIC_SELC\]/gi, autosStr);
       res = res.replace(regex, val);
     }
   });
@@ -240,6 +248,38 @@ export const createParagraph = (text: string, options: {
   });
 };
 
+export const createFieldParagraph = (
+  label: string,
+  value: string,
+  options: { 
+    before?: number; 
+    after?: number; 
+  } = {}
+) => {
+  return new Paragraph({
+    alignment: AlignmentType.JUSTIFIED,
+    spacing: {
+      before: options.before !== undefined ? options.before : 30,
+      after: options.after !== undefined ? options.after : 30,
+      line: 360, // 1.5 line spacing
+    },
+    children: [
+      new TextRun({
+        text: label,
+        bold: true,
+        size: 24, // 12pt (24 half-points)
+        font: "Times New Roman"
+      }),
+      new TextRun({
+        text: value,
+        bold: false,
+        size: 24, // 12pt (24 half-points)
+        font: "Times New Roman"
+      })
+    ]
+  });
+};
+
 export const generateMunicipalReportChildren = (
   options: ExportMunicipalProps
 ) => {
@@ -254,7 +294,9 @@ export const generateMunicipalReportChildren = (
     nomeFiscalStr = "",
     crfFiscalStr = "",
     sexoFiscalStr = "",
-    customTemplateVariables = {}
+    customTemplateVariables = {},
+    totalInspecoes,
+    totalAutos
   } = options;
 
   const childrenElements: any[] = [];
@@ -267,7 +309,8 @@ export const generateMunicipalReportChildren = (
     crfFiscalStr, 
     sexoFiscalStr, 
     customTemplateVariables,
-    filteredEstabs.length
+    totalInspecoes !== undefined ? totalInspecoes : filteredEstabs.length,
+    totalAutos
   );
 
   // 2. ITEM 3.0 DA AVALIAÇÃO GERAL
@@ -298,13 +341,17 @@ No Município de [MUNICIPIO] foram realizadas [QUANTIDADE_INSPEÇÕES_NO_MUNICIP
         })
       );
     } else {
-      childrenElements.push(
-        createParagraph(pBlock.trim(), {
-          size: 24,
-          before: 100,
-          after: 200,
-        })
-      );
+      pBlock.split(/\r?\n/).forEach(line => {
+        if (line.trim() !== "") {
+          childrenElements.push(
+            createParagraph(line.trim(), {
+              size: 24,
+              before: 100,
+              after: 200,
+            })
+          );
+        }
+      });
     }
   });
 
@@ -393,36 +440,36 @@ No Município de [MUNICIPIO] foram realizadas [QUANTIDADE_INSPEÇÕES_NO_MUNICIP
       const cpfVal = getValueOrFallback(t?.ifpCpf);
       const loteVal = getValueOrFallback(t?.lote);
 
-      // Detail fields without tables
-      childrenElements.push(createParagraph(clean(`Nome Fantasia: ${getValueOrFallback(e.fantasia).toUpperCase()}`), { bold: true, size: 24, before: 30, after: 30 }));
-      childrenElements.push(createParagraph(clean(`Razão Social: ${getValueOrFallback(e.razaoSocial).toUpperCase()}`), { size: 24, before: 30, after: 30 }));
-      childrenElements.push(createParagraph(clean(`CNPJ: ${getValueOrFallback(e.cnpj)}`), { size: 24, before: 30, after: 30 }));
-      childrenElements.push(createParagraph(clean(`Inscrição: ${getValueOrFallback(e.inscricao)}`), { size: 24, before: 30, after: 30 }));
-      childrenElements.push(createParagraph(clean(`Endereço: ${getValueOrFallback(e.endereco).toUpperCase()}`), { size: 24, before: 30, after: 30 }));
-      childrenElements.push(createParagraph(clean(`Bairro: ${getValueOrFallback(e.bairro).toUpperCase()}`), { size: 24, before: 30, after: 30 }));
-      childrenElements.push(createParagraph(clean(`Município: ${getValueOrFallback(e.cidade).toUpperCase()}`), { size: 24, before: 30, after: 30 }));
-      childrenElements.push(createParagraph(clean(`Termo de Inspeção: ${termoInspeção}`), { size: 24, before: 30, after: 30 }));
+      // Detail fields formatted with bold labels and normal values just like Complete Report
+      childrenElements.push(createFieldParagraph("Nome Fantasia: ", clean(getValueOrFallback(e.fantasia).toUpperCase())));
+      childrenElements.push(createFieldParagraph("Razão Social: ", clean(getValueOrFallback(e.razaoSocial).toUpperCase())));
+      childrenElements.push(createFieldParagraph("CNPJ: ", clean(getValueOrFallback(e.cnpj))));
+      childrenElements.push(createFieldParagraph("Inscrição: ", clean(getValueOrFallback(e.inscricao))));
+      childrenElements.push(createFieldParagraph("Endereço: ", clean(getValueOrFallback(e.endereco).toUpperCase())));
+      childrenElements.push(createFieldParagraph("Bairro: ", clean(getValueOrFallback(e.bairro).toUpperCase())));
+      childrenElements.push(createFieldParagraph("Município: ", clean(getValueOrFallback(e.cidade).toUpperCase())));
+      childrenElements.push(createFieldParagraph("Termo de Inspeção: ", clean(termoInspeção)));
       
       if (t?.nrSeqIntimacao && t.nrSeqIntimacao !== "null" && t.nrSeqIntimacao.trim() !== "") {
-        childrenElements.push(createParagraph(clean(`Termo de Intimação: ${t.nrSeqIntimacao}`), { size: 24, before: 30, after: 30 }));
+        childrenElements.push(createFieldParagraph("Termo de Intimação: ", clean(t.nrSeqIntimacao)));
       }
       
       if (t?.nrSeqAuto && t.nrSeqAuto !== "null" && t.nrSeqAuto.trim() !== "") {
-        childrenElements.push(createParagraph(clean(`Auto de Infração: ${t.nrSeqAuto}`), { size: 24, before: 30, after: 30 }));
+        childrenElements.push(createFieldParagraph("Auto de Infração: ", clean(t.nrSeqAuto)));
       }
       
       if (dataFinal !== "") {
-        childrenElements.push(createParagraph(clean(`Data: ${dataFinal}`), { size: 24, before: 30, after: 30 }));
+        childrenElements.push(createFieldParagraph("Data: ", clean(dataFinal)));
       }
       
-      childrenElements.push(createParagraph(clean(`Lote: ${loteVal}`), { size: 24, before: 30, after: 30 }));
-      childrenElements.push(createParagraph(clean(`Farmacêutico (a): ${cleanPharmaName.toUpperCase()}`), { size: 24, before: 30, after: 30 }));
-      childrenElements.push(createParagraph(clean(`CRF AM: ${getValueOrFallback(t?.inscricaoRtPresente)}`), { size: 24, before: 30, after: 30 }));
-      childrenElements.push(createParagraph(clean(`Responsável Técnico: ${getValueOrFallback(t?.nomeRtPresente).toUpperCase()}`), { size: 24, before: 30, after: 30 }));
-      childrenElements.push(createParagraph(clean(`Inf. Prestadas Por: ${ipPor.toUpperCase()}`), { size: 24, before: 30, after: 30 }));
-      childrenElements.push(createParagraph(clean(`Cargo: ${cargo.toUpperCase()}`), { size: 24, before: 30, after: 30 }));
-      childrenElements.push(createParagraph(clean(`RG: ${rgVal.toUpperCase()}`), { size: 24, before: 30, after: 30 }));
-      childrenElements.push(createParagraph(clean(`CPF: ${cpfVal.toUpperCase()}`), { size: 24, before: 30, after: 30 }));
+      childrenElements.push(createFieldParagraph("Lote: ", clean(loteVal)));
+      childrenElements.push(createFieldParagraph("Farmacêutico (a): ", clean(cleanPharmaName.toUpperCase())));
+      childrenElements.push(createFieldParagraph("CRF AM: ", clean(getValueOrFallback(t?.inscricaoRtPresente))));
+      childrenElements.push(createFieldParagraph("Responsável Técnico: ", clean(getValueOrFallback(t?.nomeRtPresente).toUpperCase())));
+      childrenElements.push(createFieldParagraph("Inf. Prestadas Por: ", clean(ipPor.toUpperCase())));
+      childrenElements.push(createFieldParagraph("Cargo: ", clean(cargo.toUpperCase())));
+      childrenElements.push(createFieldParagraph("RG: ", clean(rgVal.toUpperCase())));
+      childrenElements.push(createFieldParagraph("CPF: ", clean(cpfVal.toUpperCase())));
 
       // Notes (Organized and formatted from t.obs XML field)
       if (t?.obs && t.obs !== "null") {
@@ -500,12 +547,12 @@ No Município de [MUNICIPIO] foram realizadas [QUANTIDADE_INSPEÇÕES_NO_MUNICIP
         });
       }
 
-      // Separator line
+      // Centered Separator line identical to the complete report
       childrenElements.push(
         createParagraph("------------------------------------------------------------------------------------------------------------------------", {
-          color: "CCCCCC",
-          before: 150,
+          before: 200,
           after: 200,
+          align: AlignmentType.CENTER
         })
       );
     });
@@ -561,7 +608,7 @@ export const exportFullMunicipalDocx = async (
   options: ExportMunicipalProps,
   travelFiscais: string
 ) => {
-  const { selectedCity, filterLabel, filteredEstabs, termos, customAvaliacaoGeralText, travelPeriod, dateFormat = 'apenas_data' } = options;
+  const { selectedCity, filterLabel, filteredEstabs, termos, customAvaliacaoGeralText, travelPeriod, dateFormat = 'apenas_data', totalInspecoes, totalAutos } = options;
 
   let templateBase64 = null;
   
@@ -620,7 +667,9 @@ export const exportFullMunicipalDocx = async (
         nomeFiscalStr,
         crfFiscalStr,
         sexoFiscalStr,
-        customTemplateVariables
+        customTemplateVariables,
+        totalInspecoes !== undefined ? totalInspecoes : filteredEstabs.length,
+        totalAutos
       );
     }
   });
@@ -658,7 +707,8 @@ export const exportFullMunicipalDocx = async (
     crfFiscalStr,
     sexoFiscalStr,
     customTemplateVariables,
-    filteredEstabs.length
+    totalInspecoes !== undefined ? totalInspecoes : filteredEstabs.length,
+    totalAutos
   );
 
   fiscalNames.forEach((name, i) => {
@@ -823,7 +873,9 @@ export const exportFullMunicipalDocx = async (
           nomeFiscalStr,
           crfFiscalStr,
           sexoFiscalStr,
-          customTemplateVariables
+          customTemplateVariables,
+          totalInspecoes !== undefined ? totalInspecoes : filteredEstabs.length,
+          totalAutos
         );
         
         const isHeader = resolvedLine.match(/^[A-Z0-9.\- \t]+$/) && resolvedLine.length > 3 && !resolvedLine.includes(",");
@@ -881,6 +933,13 @@ export const exportFullMunicipalDocx = async (
         CIDADE: selectedCity || "",
         MUNICIPIO: selectedCity || "",
         PERIODO_DE_FISCALIZAÇÃO: travelPeriod || "NÃO INFORMADO",
+        PERIODO_DE_FISCALIZACAO: travelPeriod || "NÃO INFORMADO",
+        PERIODO_VIAGEM: travelPeriod || "NÃO INFORMADO",
+        QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO: totalInspecoes !== undefined ? String(totalInspecoes) : String(filteredEstabs.length),
+        QUANTIDADE_INSPECOES_NO_MUNICIPIO_SELECIONADO: totalInspecoes !== undefined ? String(totalInspecoes) : String(filteredEstabs.length),
+        QUANTIDADE_EMPRESAS_NO_MUNICIPIO_SELECIONADO: totalInspecoes !== undefined ? String(totalInspecoes) : String(filteredEstabs.length),
+        QDT_AUTOS_DE_INFRACAO_MUNIC_SELC: totalAutos !== undefined ? String(totalAutos) : "0",
+        QTD_AUTOS_DE_INFRACAO_MUNIC_SELC: totalAutos !== undefined ? String(totalAutos) : "0",
         ...customTemplateVariables,
         RELATORIO_SIMPLES: relatorioSimplesXml
     };

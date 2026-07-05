@@ -57,65 +57,89 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
     if (inspetores.size > 0) {
       setTravelFiscais(Array.from(inspetores).join(" / "));
     }
+  }, [termos]);
 
-    if (termos && termos.length > 0) {
-      let minDate: Date | null = null;
-      let maxDate: Date | null = null;
+  // Helper to calculate acting period based on actual XML records
+  const calculatePeriod = React.useCallback((city: string): string => {
+    if (!termos || termos.length === 0) return "15/05/2026 a 22/05/2026";
+    
+    // Filter by city if specified
+    const filteredTermos = city && estabelecimentos && estabelecimentos.length > 0
+      ? (() => {
+          const cityInscricoes = new Set(
+            estabelecimentos
+              .filter(e => e.cidade.toUpperCase() === city.toUpperCase())
+              .map(e => e.inscricao)
+          );
+          return termos.filter(t => t.estabelecimentoId && cityInscricoes.has(t.estabelecimentoId));
+        })()
+      : termos;
 
-      termos.forEach(t => {
-        if (!t.dtInicio || t.dtInicio === "null" || t.dtInicio === "NÃO INFORMADO") return;
-        
-        const parts = t.dtInicio.trim().split(/\s+/);
-        if (parts.length === 0) return;
-        
-        const datePart = parts[0];
-        const dateMatch = datePart.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
-        if (!dateMatch) return;
-        
-        const day = parseInt(dateMatch[1], 10);
-        const month = parseInt(dateMatch[2], 10) - 1;
-        const yearStr = dateMatch[3];
-        let year = parseInt(yearStr, 10);
-        if (yearStr.length === 2) {
-          year += 2000;
-        }
-        
-        let hr = 0, min = 0, sec = 0;
-        if (parts.length > 1) {
-          const timeMatch = parts[1].match(/^(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?$/);
-          if (timeMatch) {
-            hr = parseInt(timeMatch[1], 10);
-            min = parseInt(timeMatch[2], 10);
-            if (timeMatch[3]) {
-              sec = parseInt(timeMatch[3], 10);
-            }
-          }
-        }
-        
-        const currentDt = new Date(year, month, day, hr, min, sec);
-        if (!isNaN(currentDt.getTime())) {
-          if (!minDate || currentDt < minDate) {
-            minDate = currentDt;
-          }
-          if (!maxDate || currentDt > maxDate) {
-            maxDate = currentDt;
-          }
-        }
-      });
+    let minDate: Date | null = null;
+    let maxDate: Date | null = null;
 
-      if (minDate && maxDate) {
-        const formatZero = (num: number) => String(num).padStart(2, '0');
-        const minStr = `${formatZero((minDate as Date).getDate())}/${formatZero((minDate as Date).getMonth() + 1)}/${(minDate as Date).getFullYear()}`;
-        const maxStr = `${formatZero((maxDate as Date).getDate())}/${formatZero((maxDate as Date).getMonth() + 1)}/${(maxDate as Date).getFullYear()}`;
-        
-        if (minStr === maxStr) {
-          setTravelPeriod(minStr);
-        } else {
-          setTravelPeriod(`${minStr} a ${maxStr}`);
+    const targetTermos = filteredTermos.length > 0 ? filteredTermos : termos;
+
+    targetTermos.forEach(t => {
+      if (!t.dtInicio || t.dtInicio === "null" || t.dtInicio === "NÃO INFORMADO") return;
+      
+      const parts = t.dtInicio.trim().split(/\s+/);
+      if (parts.length === 0) return;
+      
+      const datePart = parts[0];
+      const dateMatch = datePart.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+      if (!dateMatch) return;
+      
+      const day = parseInt(dateMatch[1], 10);
+      const month = parseInt(dateMatch[2], 10) - 1;
+      const yearStr = dateMatch[3];
+      let year = parseInt(yearStr, 10);
+      if (yearStr.length === 2) {
+        year += 2000;
+      }
+      
+      let hr = 0, min = 0, sec = 0;
+      if (parts.length > 1) {
+        const timeMatch = parts[1].match(/^(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?$/);
+        if (timeMatch) {
+          hr = parseInt(timeMatch[1], 10);
+          min = parseInt(timeMatch[2], 10);
+          if (timeMatch[3]) {
+            sec = parseInt(timeMatch[3], 10);
+          }
         }
       }
+      
+      const currentDt = new Date(year, month, day, hr, min, sec);
+      if (!isNaN(currentDt.getTime())) {
+        if (!minDate || currentDt < minDate) {
+          minDate = currentDt;
+        }
+        if (!maxDate || currentDt > maxDate) {
+          maxDate = currentDt;
+        }
+      }
+    });
+
+    if (minDate && maxDate) {
+      const formatZero = (num: number) => String(num).padStart(2, '0');
+      const minStr = `${formatZero((minDate as Date).getDate())}/${formatZero((minDate as Date).getMonth() + 1)}/${(minDate as Date).getFullYear()}`;
+      const maxStr = `${formatZero((maxDate as Date).getDate())}/${formatZero((maxDate as Date).getMonth() + 1)}/${(maxDate as Date).getFullYear()}`;
+      
+      if (minStr === maxStr) {
+        return minStr;
+      } else {
+        return `${minStr} a ${maxStr}`;
+      }
     }
-  }, [termos]);
+
+    return "15/05/2026 a 22/05/2026";
+  }, [termos, estabelecimentos]);
+
+  React.useEffect(() => {
+    const period = calculatePeriod(selectedCity);
+    setTravelPeriod(period);
+  }, [selectedCity, termos, estabelecimentos, calculatePeriod]);
 
   // Checks if an establishment was found closed
   const isEstabClosed = React.useCallback((e: Estabelecimento) => {
@@ -497,18 +521,23 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
     // Base Intro
     let finalIntro = dbEvalIntroText;
     
-    const cityInscricoes = new Set(targetEstabs.map(e => e.inscricao));
-    const qtdAutos = termos.filter(t => t.estabelecimentoId && cityInscricoes.has(t.estabelecimentoId) && t.nrSeqAuto && t.nrSeqAuto !== "null" && t.nrSeqAuto.trim() !== "").length;
-
     const cityInscricoesWhole = new Set(estabelecimentos.filter(e => e.cidade.toUpperCase() === selectedCity.toUpperCase()).map(e => e.inscricao));
+    const totalInspecoesWhole = termos.filter(t => t.estabelecimentoId && cityInscricoesWhole.has(t.estabelecimentoId)).length;
+    const totalAutosWhole = termos.filter(t => t.estabelecimentoId && cityInscricoesWhole.has(t.estabelecimentoId) && t.nrSeqAuto && t.nrSeqAuto !== "null" && t.nrSeqAuto.trim() !== "").length;
+
     const pharmacistsInCity = rts.filter(rt => rt.estabelecimentoId && cityInscricoesWhole.has(rt.estabelecimentoId) && rt.nome && rt.nome !== "null");
     const uniquePharNames = new Set(pharmacistsInCity.map(rt => rt.nome.trim().toUpperCase()));
     const qtdFarmaceutico = uniquePharNames.size;
 
     finalIntro = finalIntro.replace(/\[MUNICIPIO\]/g, selectedCity.toUpperCase());
-    finalIntro = finalIntro.replace(/\[QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO\]/g, targetEstabs.length.toString());
-    finalIntro = finalIntro.replace(/\[QDT_AUTOS_DE_INFRACAO_MUNIC_SELC\]/g, qtdAutos.toString());
+    finalIntro = finalIntro.replace(/\[QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO\]/g, totalInspecoesWhole.toString());
+    finalIntro = finalIntro.replace(/\[QUANTIDADE_INSPECOES_NO_MUNICIPIO_SELECIONADO\]/g, totalInspecoesWhole.toString());
+    finalIntro = finalIntro.replace(/\[QDT_AUTOS_DE_INFRACAO_MUNIC_SELC\]/g, totalAutosWhole.toString());
+    finalIntro = finalIntro.replace(/\[QTD_AUTOS_DE_INFRACAO_MUNIC_SELC\]/g, totalAutosWhole.toString());
     finalIntro = finalIntro.replace(/\[QTD_FARMACEUTICO\]/g, qtdFarmaceutico.toString());
+    finalIntro = finalIntro.replace(/\[PERIODO_DE_FISCALIZAÇÃO\]/g, calculatePeriod(selectedCity));
+    finalIntro = finalIntro.replace(/\[PERIODO_DE_FISCALIZACAO\]/g, calculatePeriod(selectedCity));
+    finalIntro = finalIntro.replace(/\[PERIODO_VIAGEM\]/g, calculatePeriod(selectedCity));
 
     paragraphs.push(finalIntro);
 
@@ -580,11 +609,9 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
                  
                  // System variables
                  if (refVarId === "MUNICIPIO") refValueText = selectedCity.toUpperCase();
-                 else if (refVarId === "QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO" || refVarId.includes("INSPECOES")) refValueText = targetEstabs.length.toString();
+                 else if (refVarId === "QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO" || refVarId.includes("INSPECOES")) refValueText = totalInspecoesWhole.toString();
                  else if (refVarId === "QDT_AUTOS_DE_INFRACAO_MUNIC_SELC" || refVarId.includes("AUTOS")) {
-                    const cityInscricoes = new Set(targetEstabs.map(e => e.inscricao));
-                    const num = termos.filter(t => t.estabelecimentoId && cityInscricoes.has(t.estabelecimentoId) && t.nrSeqAuto && t.nrSeqAuto !== "null" && t.nrSeqAuto.trim() !== "").length;
-                    refValueText = num.toString();
+                    refValueText = totalAutosWhole.toString();
                  }
                  else if (refVarId === "QTD_FARMACEUTICO") {
                     const cityInscricoesWholeFl = new Set(estabelecimentos.filter(e => e.cidade.toUpperCase() === selectedCity.toUpperCase()).map(e => e.inscricao));
@@ -651,11 +678,9 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
              const refVarId = (v.conditionRefVar || "").replace(/[\[\]]/g, "").trim();
              
              if (refVarId === "MUNICIPIO") refValueText = selectedCity.toUpperCase();
-             else if (refVarId === "QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO" || refVarId.includes("INSPECOES")) refValueText = targetEstabs.length.toString();
+             else if (refVarId === "QUANTIDADE_INSPEÇÕES_NO_MUNICIPIO_SELECIONADO" || refVarId.includes("INSPECOES")) refValueText = totalInspecoesWhole.toString();
              else if (refVarId === "QDT_AUTOS_DE_INFRACAO_MUNIC_SELC" || refVarId.includes("AUTOS")) {
-                const cityInscricoes = new Set(targetEstabs.map(e => e.inscricao));
-                const num = termos.filter(t => t.estabelecimentoId && cityInscricoes.has(t.estabelecimentoId) && t.nrSeqAuto && t.nrSeqAuto !== "null" && t.nrSeqAuto.trim() !== "").length;
-                refValueText = num.toString();
+                refValueText = totalAutosWhole.toString();
              }
              else if (refVarId === "QTD_FARMACEUTICO") {
                 const cityInscricoesWholeFl = new Set(estabelecimentos.filter(e => e.cidade.toUpperCase() === selectedCity.toUpperCase()).map(e => e.inscricao));
@@ -801,6 +826,10 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
 
     showLoading("Gerando documento...");
     try {
+      const cityInscricoesWhole = new Set(estabelecimentos.filter(e => e.cidade.toUpperCase() === selectedCity.toUpperCase()).map(e => e.inscricao));
+      const totalInspecoes = termos.filter(t => t.estabelecimentoId && cityInscricoesWhole.has(t.estabelecimentoId)).length;
+      const totalAutos = termos.filter(t => t.estabelecimentoId && cityInscricoesWhole.has(t.estabelecimentoId) && t.nrSeqAuto && t.nrSeqAuto !== "null" && t.nrSeqAuto.trim() !== "").length;
+
       await exportMunicipalDocx(`Relatorio_Municipal_${selectedCity.toUpperCase()}`, {
         selectedCity,
         filterLabel: filterLabels[municipalFilter],
@@ -808,8 +837,10 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
         termos,
         customAvaliacaoGeralText: compiledText,
         dateFormat,
-        travelPeriod,
-        travelFiscais
+        travelPeriod: calculatePeriod(selectedCity),
+        travelFiscais,
+        totalInspecoes,
+        totalAutos
       });
     } catch(e) {
       console.error(e);
@@ -846,6 +877,10 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
     
     showLoading("Gerando documento, por favor aguarde...");
     try {
+      const cityInscricoesWhole = new Set(estabelecimentos.filter(e => e.cidade.toUpperCase() === selectedCity.toUpperCase()).map(e => e.inscricao));
+      const totalInspecoes = termos.filter(t => t.estabelecimentoId && cityInscricoesWhole.has(t.estabelecimentoId)).length;
+      const totalAutos = termos.filter(t => t.estabelecimentoId && cityInscricoesWhole.has(t.estabelecimentoId) && t.nrSeqAuto && t.nrSeqAuto !== "null" && t.nrSeqAuto.trim() !== "").length;
+
       await exportFullMunicipalDocx(`Relatorio_Completo_${selectedCity.toUpperCase()}`, {
         selectedCity,
         filterLabel: filterLabels[municipalFilter],
@@ -853,7 +888,9 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
         termos,
         customAvaliacaoGeralText: compiledText,
         dateFormat,
-        travelPeriod
+        travelPeriod: calculatePeriod(selectedCity),
+        totalInspecoes,
+        totalAutos
       }, travelFiscais);
     } catch (err) {
       console.error(err);
