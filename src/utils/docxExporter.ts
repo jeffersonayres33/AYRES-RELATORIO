@@ -280,6 +280,31 @@ export const createFieldParagraph = (
   });
 };
 
+export const isLineTopic = (text: string): boolean => {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return false;
+
+  // 1. Markdown style header prefix
+  if (trimmed.startsWith("#")) return true;
+
+  // 2. Already markdown bolded
+  if (trimmed.startsWith("**") && trimmed.endsWith("**")) return true;
+
+  // 3. Keep topics reasonably short to prevent false positives (e.g. max 100 chars)
+  if (trimmed.length > 100) return false;
+
+  // 4. Must contain at least one uppercase letter (Portguese/English)
+  const hasUppercase = /[A-ZÀ-ÖØ-ß]/.test(trimmed);
+  if (!hasUppercase) return false;
+
+  // 5. Must NOT contain any lowercase letters
+  const hasLowercase = /[a-zà-öø-ÿ]/.test(trimmed);
+  if (hasLowercase) return false;
+
+  return true;
+};
+
+
 export const generateMunicipalReportChildren = (
   options: ExportMunicipalProps
 ) => {
@@ -342,12 +367,15 @@ No Município de [MUNICIPIO] foram realizadas [QUANTIDADE_INSPEÇÕES_NO_MUNICIP
       );
     } else {
       pBlock.split(/\r?\n/).forEach(line => {
-        if (line.trim() !== "") {
+        const trimmedLine = line.trim();
+        if (trimmedLine !== "") {
+          const isTopic = isLineTopic(trimmedLine);
           childrenElements.push(
-            createParagraph(line.trim(), {
+            createParagraph(trimmedLine, {
+              bold: isTopic,
               size: 24,
-              before: 100,
-              after: 200,
+              before: isTopic ? 200 : 100,
+              after: isTopic ? 100 : 150,
             })
           );
         }
@@ -510,22 +538,15 @@ No Município de [MUNICIPIO] foram realizadas [QUANTIDADE_INSPEÇÕES_NO_MUNICIP
                              trimmed.toUpperCase().startsWith("AMBIENTE") ||
                              trimmed.startsWith("#");
 
-          if (isMainTitle) {
+          const isTopic = isLineTopic(trimmed) || isMainTitle || isSubTitle;
+
+          if (isTopic) {
             childrenElements.push(
               createParagraph(clean(trimmed), {
                 bold: true,
                 size: 24, // 12pt
-                before: 200,
-                after: 100,
-              })
-            );
-          } else if (isSubTitle) {
-            childrenElements.push(
-              createParagraph(clean(trimmed), {
-                bold: true,
-                size: 24, // 12pt
-                before: 150,
-                after: 80,
+                before: 180,
+                after: 90,
               })
             );
           } else {
@@ -731,8 +752,13 @@ export const exportFullMunicipalDocx = async (
       relatorioSimplesXml += pBold(pBlock.substring(2, pBlock.length - 2));
     } else {
       pBlock.split(/\r?\n/).forEach(line => {
-        if (line.trim() !== "") {
-          relatorioSimplesXml += p(r(line));
+        const trimmedLine = line.trim();
+        if (trimmedLine !== "") {
+          if (isLineTopic(trimmedLine)) {
+            relatorioSimplesXml += pBold(trimmedLine);
+          } else {
+            relatorioSimplesXml += p(r(trimmedLine));
+          }
         }
       });
     }
@@ -839,7 +865,9 @@ export const exportFullMunicipalDocx = async (
                                 trimmed.startsWith("#IRREGULAR") ||
                                 (trimmed.length > 3 && upper === trimmed && !trimmed.includes(",") && trimmed.split(" ").length < 10);
 
-            if (isMainTitle) {
+            const isTopic = isLineTopic(trimmed) || isMainTitle;
+
+            if (isTopic) {
               relatorioSimplesXml += pBold(trimmed);
             } else {
               relatorioSimplesXml += p(r(trimmed));
