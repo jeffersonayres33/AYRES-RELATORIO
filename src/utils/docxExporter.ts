@@ -225,6 +225,7 @@ export const createParagraph = (text: string, options: {
   after?: number;
   before?: number;
   font?: string;
+  indent?: boolean;
 } = {}) => {
   const lines = text.split(/\r?\n/);
   const children = lines.map((line, i) => new TextRun({
@@ -244,6 +245,7 @@ export const createParagraph = (text: string, options: {
       after: options.after !== undefined ? options.after : 60,
       line: 360, // 360 twips is exactly 1.5 line spacing (1.5 * 240)
     },
+    indent: options.indent ? { firstLine: 709 } : undefined, // 1.25 cm standard paragraph indentation
     children: children,
   });
 };
@@ -376,6 +378,7 @@ No Município de [MUNICIPIO] foram realizadas [QUANTIDADE_INSPEÇÕES_NO_MUNICIP
               size: 24,
               before: isTopic ? 200 : 100,
               after: isTopic ? 100 : 150,
+              indent: !isTopic,
             })
           );
         }
@@ -401,6 +404,7 @@ No Município de [MUNICIPIO] foram realizadas [QUANTIDADE_INSPEÇÕES_NO_MUNICIP
           size: 24,
           before: 100,
           after: 200,
+          indent: true,
         }
       )
     );
@@ -561,7 +565,8 @@ No Município de [MUNICIPIO] foram realizadas [QUANTIDADE_INSPEÇÕES_NO_MUNICIP
                 size: 24, // 12pt
                 before: 60,
                 after: 60,
-                bold: hasConforme
+                bold: hasConforme,
+                indent: true,
               })
             );
           }
@@ -709,7 +714,9 @@ export const exportFullMunicipalDocx = async (
 
   const rPrContent = `<w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman"/><w:sz w:val="24"/><w:szCs w:val="24"/>`;
   const pStyle = `<w:pPr><w:jc w:val="both"/><w:spacing w:before="100" w:after="100" w:line="360" w:lineRule="auto"/></w:pPr>`;
+  const pStyleWithIndent = `<w:pPr><w:jc w:val="both"/><w:spacing w:before="100" w:after="100" w:line="360" w:lineRule="auto"/><w:ind w:firstLine="709"/></w:pPr>`;
   const p = (inner: string) => `<w:p>${pStyle}${inner}</w:p>`;
+  const pWithIndent = (inner: string) => `<w:p>${pStyleWithIndent}${inner}</w:p>`;
   const pBold = (inner: string) => `<w:p><w:pPr><w:jc w:val="both"/><w:spacing w:before="200" w:after="100" w:line="360" w:lineRule="auto"/></w:pPr><w:r><w:rPr>${rPrContent}<w:b/></w:rPr><w:t xml:space="preserve">${escapeXml(inner)}</w:t></w:r></w:p>`;
   const r = (text: string, bold = false) => `<w:r><w:rPr>${rPrContent}${bold ? `<w:b/>` : ''}</w:rPr><w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r>`;
 
@@ -757,7 +764,7 @@ export const exportFullMunicipalDocx = async (
           if (isLineTopic(trimmedLine)) {
             relatorioSimplesXml += pBold(trimmedLine);
           } else {
-            relatorioSimplesXml += p(r(trimmedLine));
+            relatorioSimplesXml += pWithIndent(r(trimmedLine));
           }
         }
       });
@@ -766,7 +773,7 @@ export const exportFullMunicipalDocx = async (
 
   if (!assessmentText.includes("4. DA AVALIAÇÃO ESPECÍFICA DE CADA ESTABELECIMENTO")) {
     relatorioSimplesXml += pBold("4. DA AVALIAÇÃO ESPECÍFICA DE CADA ESTABELECIMENTO");
-    relatorioSimplesXml += p(r("Em virtude do risco sanitário e das irregularidades identificadas perante o CRF/AM, será realizada uma análise individualizada de alguns estabelecimentos afetados. Essa medida visa fornecer informações detalhadas aos órgãos competentes, garantindo que as devidas providências sejam tomadas para assegurar a conformidade e a segurança na prestação de serviços farmacêuticos."));
+    relatorioSimplesXml += pWithIndent(r("Em virtude do risco sanitário e das irregularidades identificadas perante o CRF/AM, será realizada uma análise individualizada de alguns estabelecimentos afetados. Essa medida visa fornecer informações detalhadas aos órgãos competentes, garantindo que as devidas providências sejam tomadas para assegurar a conformidade e a segurança na prestação de serviços farmacêuticos."));
   }
 
   if (filteredEstabs.length === 0) {
@@ -870,7 +877,7 @@ export const exportFullMunicipalDocx = async (
             if (isTopic) {
               relatorioSimplesXml += pBold(trimmed);
             } else {
-              relatorioSimplesXml += p(r(trimmed));
+              relatorioSimplesXml += pWithIndent(r(trimmed));
             }
           }
         });
