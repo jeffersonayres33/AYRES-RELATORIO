@@ -150,6 +150,7 @@ export async function setDoc(docRef: any, rawData: any) {
     if (error) {
       if (error.message?.includes("security policy") || error.message?.includes("row-level security") || error.code === '42501') {
         localStorage.setItem('supabase_rls_policy_active_warning', 'true');
+        window.dispatchEvent(new Event('supabase_rls_warning'));
         throw error;
       }
       // If it failed because of missing column 'data', try inserting directly as flat columns
@@ -161,6 +162,7 @@ export async function setDoc(docRef: any, rawData: any) {
       if (flatError) {
         if (flatError.message?.includes("security policy") || flatError.message?.includes("row-level security") || flatError.code === '42501') {
           localStorage.setItem('supabase_rls_policy_active_warning', 'true');
+          window.dispatchEvent(new Event('supabase_rls_warning'));
         }
         throw flatError;
       }
@@ -315,6 +317,7 @@ class SupabaseAuth {
           // Set warning flags
           if (insErr.message?.includes("security policy") || insErr.message?.includes("row-level security") || insErr.code === '42501') {
             localStorage.setItem('supabase_rls_policy_active_warning', 'true');
+            window.dispatchEvent(new Event('supabase_rls_warning'));
           } else {
             localStorage.setItem('supabase_db_unreachable_warning', insErr.message || 'Erro de conexão');
           }

@@ -12,8 +12,7 @@
 -- ========================================================================
 
 -- ========================================================================
--- 1. ESTRUTURA DE TABELAS REFORÇADAS COM COLUNAS VIRTUAIS GERADAS
---    Isso híbrida a flexibilidade do NoSQL (JSONB) com a velocidade do SQL Relacional!
+-- 1. ESTRUTURA DE TABELAS PARALELIZADAS (FORMATO JSONB FLEXÍVEL E ULTRAVELOZ)
 -- ========================================================================
 
 -- Tabela de Mapeamentos Fiscais / CRF
@@ -31,18 +30,13 @@ CREATE TABLE IF NOT EXISTS "fiscal_name_mappings" (
 -- Tabela de Usuários Autorizados
 CREATE TABLE IF NOT EXISTS "authorized_users" (
     id TEXT PRIMARY KEY,
-    data JSONB NOT NULL DEFAULT '{}'::jsonb,
-    -- Colunas Virtuais Geradas para otimizar pesquisas diretas e índices
-    email TEXT GENERATED ALWAYS AS (id) STORED,
-    role TEXT GENERATED ALWAYS AS (data->>'role') STORED
+    data JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
 -- Tabela de Itens de Avaliação (Checklists do Relatório)
 CREATE TABLE IF NOT EXISTS "evaluation_items" (
     id TEXT PRIMARY KEY,
-    data JSONB NOT NULL DEFAULT '{}'::jsonb,
-    title TEXT GENERATED ALWAYS AS (data->>'title') STORED,
-    category TEXT GENERATED ALWAYS AS (data->>'category') STORED
+    data JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
 -- Tabela de Variáveis de Avaliação
@@ -77,52 +71,27 @@ CREATE TABLE IF NOT EXISTS "settings_chunks" (
 
 
 -- ========================================================================
--- 2. ÍNDICES DE ALTO DESEMPENHO (PERFORMANCE INDEXING)
---    Cria índices GIN (Generalized Inverted Index) para permitir buscas
---    instantâneas dentro dos blocos JSONB do Supabase.
+-- 2. ÍNDICES DE ALTO DESEMPENHO (PERFORMANCE INDEXING EM ATRIBUTOS JSONB)
+--    Cria índices GIN (Generalized Inverted Index) para permitir buscas de documentos, Ex.: { ... }
+--    E índices B-Tree baseados em expressões JSONB, garantindo buscas instantâneas!
 -- ========================================================================
 
--- Índice para acelerar buscas complexas em configurações de templates e chunks grandes
+-- Indices GIN para busca profunda de sub-atributos JSONB
 CREATE INDEX IF NOT EXISTS idx_settings_chunks_data_gin ON "settings_chunks" USING gin (data);
-
--- Índice de busca por atributos internos de variáveis
 CREATE INDEX IF NOT EXISTS idx_eval_variables_data_gin ON "evaluation_variables" USING gin (data);
 
--- Índices de busca direta nas colunas virtuais de usuários e itens
-CREATE INDEX IF NOT EXISTS idx_authorized_users_role ON "authorized_users"(role);
-CREATE INDEX IF NOT EXISTS idx_evaluation_items_category ON "evaluation_items"(category);
+-- Índices B-Tree baseados em expressões nativas do PostgreSQL de forma segura e limpa
+CREATE INDEX IF NOT EXISTS idx_authorized_users_role ON "authorized_users" (((data->>'role')));
+CREATE INDEX IF NOT EXISTS idx_evaluation_items_category ON "evaluation_items" (((data->>'category')));
 
 
 -- ========================================================================
 -- 3. POLÍTICAS DE PROTEÇÃO E SEGURANÇA (ROW LEVEL SECURITY - RLS)
 -- ========================================================================
--- Escolha uma das duas abordagens abaixo de acordo com a maturidade do seu time:
-
--- [OPÇÃO A]: SEGURANÇA TOTAL EM PRODUÇÃO (Habilitar RLS e permitir total controle apenas aos administradores autorizados)
--- Para usar este modo com segurança total, você deve descomentar os comandos abaixo:
-/*
-ALTER TABLE "fiscal_crf_mappings" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "fiscal_name_mappings" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "authorized_users" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "evaluation_items" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "evaluation_variables" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "templateVariables" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "evaluation_intro" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "settings" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "settings_chunks" ENABLE ROW LEVEL SECURITY;
-
--- Exemplo de política de acesso público para leitura e escrita apenas para usuários de e-mail verificado (Supabase Auth)
-CREATE POLICY "Acesso irrestrito para usuários autenticados" 
-ON "authorized_users" 
-FOR ALL 
-TO authenticated 
-USING (true) 
-WITH CHECK (true);
-*/
 
 -- [OPÇÃO B]: MODO DESENVOLVIMENTO ÁGIL (RLS desativado para integração rápida de frontend via Chave Anon)
--- Se preferir não configurar logins complexos por enquanto, execute as linhas abaixo para que
--- as requisições de leitura/escrita feitas diretamente pelo navegador funcionem sem validações de token:
+-- Se preferir usar políticas rígidas posteriormente, pode habilitar o RLS e definir regras
+-- baseadas no Supabase Auth.
 ALTER TABLE "fiscal_crf_mappings" DISABLE ROW LEVEL SECURITY;
 ALTER TABLE "fiscal_name_mappings" DISABLE ROW LEVEL SECURITY;
 ALTER TABLE "authorized_users" DISABLE ROW LEVEL SECURITY;

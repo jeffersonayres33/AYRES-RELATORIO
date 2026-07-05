@@ -16,21 +16,58 @@ interface AuthorizedEmail {
   createdAt: number;
   role: string;
   password?: string;
+  allowedTabs?: string[];
 }
 
-export default function AdminPanel() {
+interface AdminPanelProps {
+  currentUserRole?: string;
+  currentUserAllowedTabs?: string[];
+}
+
+export default function AdminPanel({ currentUserRole = "user", currentUserAllowedTabs = [] }: AdminPanelProps) {
   const [users, setUsers] = useState<AuthorizedEmail[]>([]);
   const [loading, setLoading] = useState(true);
   const [newEmail, setNewEmail] = useState("");
   const [newRole, setNewRole] = useState("user");
   const [newPassword, setNewPassword] = useState("");
+  const [newAllowedTabs, setNewAllowedTabs] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [adminTab, setAdminTab] = useState<"users" | "eval" | "template" | "fiscais" | "database" | "backup">("users");
+  
+  const allSubTabs = React.useMemo(() => [
+    { id: "users", label: "Usuários", icon: Users },
+    { id: "eval", label: "Construtor da Avaliação Geral", icon: FileText },
+    { id: "template", label: "Modelo de Relatório", icon: FileSearch },
+    { id: "fiscais", label: "Mapeamento Fiscais/CRF", icon: Settings },
+    { id: "database", label: "Otimizar Banco de Dados", icon: DatabaseZap },
+    { id: "backup", label: "Backup & Restauração", icon: Save },
+  ], []);
+
+  const allowedSubTabs = React.useMemo(() => {
+    if (currentUserRole === "admin") {
+      return allSubTabs;
+    }
+    if (currentUserRole === "moderator") {
+      return allSubTabs.filter(t => currentUserAllowedTabs.includes(t.id));
+    }
+    return [];
+  }, [currentUserRole, currentUserAllowedTabs, allSubTabs]);
+
+  const [adminTab, setAdminTab] = useState<string>("");
+
+  useEffect(() => {
+    if (allowedSubTabs.length > 0 && !allowedSubTabs.some(t => t.id === adminTab)) {
+      setAdminTab(allowedSubTabs[0].id);
+    }
+  }, [allowedSubTabs, adminTab]);
 
   const { showLoading, hideLoading } = useLoading();
   const [confirmDeleteUser, setConfirmDeleteUser] = useState<string | null>(null);
   const [editingPasswordUser, setEditingPasswordUser] = useState<string | null>(null);
   const [editingPasswordValue, setEditingPasswordValue] = useState("");
+  
+  const [editingRoleUser, setEditingRoleUser] = useState<string | null>(null);
+  const [editingRoleValue, setEditingRoleValue] = useState<string>("user");
+  const [editingAllowedTabsValue, setEditingAllowedTabsValue] = useState<string[]>([]);
 
   const fetchUsers = async () => {
     try {
@@ -63,21 +100,56 @@ export default function AdminPanel() {
     try {
       const sanitizedEmail = newEmail.trim().toLowerCase();
       const docRef = doc(db, "authorized_users", sanitizedEmail);
+      
+      const allowedTabsList = newRole === "moderator" 
+        ? newAllowedTabs 
+        : (newRole === "admin" ? ["users", "eval", "template", "fiscais", "database", "backup"] : []);
+
       await setDoc(docRef, {
         email: sanitizedEmail,
         addedBy: auth.currentUser?.email || "unknown",
         createdAt: Date.now(),
         role: newRole,
-        password: newPassword.trim() || undefined
+        password: newPassword.trim() || undefined,
+        allowedTabs: allowedTabsList
       });
       setNewEmail("");
       setNewPassword("");
+      setNewAllowedTabs([]);
       await fetchUsers();
     } catch(err: any) {
        console.error(err);
        setError("Falha ao adicionar usuário. Você tem permissão?");
     } finally {
        hideLoading();
+    }
+  };
+
+  const handleUpdateRole = async (email: string) => {
+    setError(null);
+    showLoading("Atualizando permissões...");
+    try {
+      const docRef = doc(db, "authorized_users", email);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const udata = snap.data();
+        const allowedTabsList = editingRoleValue === "moderator"
+          ? editingAllowedTabsValue
+          : (editingRoleValue === "admin" ? ["users", "eval", "template", "fiscais", "database", "backup"] : []);
+        
+        udata.role = editingRoleValue;
+        udata.allowedTabs = allowedTabsList;
+        await setDoc(docRef, udata);
+      } else {
+        throw new Error("Usuário não encontrado.");
+      }
+      setEditingRoleUser(null);
+      await fetchUsers();
+    } catch (err: any) {
+      console.error(err);
+      setError(`Erro ao atualizar permissão: ${err.message || err}`);
+    } finally {
+      hideLoading();
     }
   };
 
@@ -150,42 +222,22 @@ export default function AdminPanel() {
         </p>
 
         <div className="flex gap-2 mt-6 overflow-x-auto pb-1">
-           <button
-             onClick={() => setAdminTab("users")}
-             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-sm uppercase tracking-widest transition-all whitespace-nowrap ${adminTab === "users" ? "bg-violet-600 text-white shadow-md shadow-violet-600/20" : "bg-slate-50 text-slate-500 hover:bg-slate-100"}`}
-           >
-             <Users className="w-4 h-4" /> Usuários
-           </button>
-           <button
-             onClick={() => setAdminTab("eval")}
-             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-sm uppercase tracking-widest transition-all whitespace-nowrap ${adminTab === "eval" ? "bg-violet-600 text-white shadow-md shadow-violet-600/20" : "bg-slate-50 text-slate-500 hover:bg-slate-100"}`}
-           >
-             <FileText className="w-4 h-4" /> Construtor da Avaliação Geral
-           </button>
-           <button
-             onClick={() => setAdminTab("template")}
-             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-sm uppercase tracking-widest transition-all whitespace-nowrap ${adminTab === "template" ? "bg-violet-600 text-white shadow-md shadow-violet-600/20" : "bg-slate-50 text-slate-500 hover:bg-slate-100"}`}
-           >
-             <FileSearch className="w-4 h-4" /> Modelo de Relatório
-           </button>
-           <button
-             onClick={() => setAdminTab("fiscais")}
-             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-sm uppercase tracking-widest transition-all whitespace-nowrap ${adminTab === "fiscais" ? "bg-violet-600 text-white shadow-md shadow-violet-600/20" : "bg-slate-50 text-slate-500 hover:bg-slate-100"}`}
-           >
-             <Settings className="w-4 h-4" /> Mapeamento Fiscais/CRF
-           </button>
-           <button
-             onClick={() => setAdminTab("database")}
-             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-sm uppercase tracking-widest transition-all whitespace-nowrap ${adminTab === "database" ? "bg-violet-600 text-white shadow-md shadow-violet-600/20" : "bg-slate-50 text-slate-500 hover:bg-slate-100"}`}
-           >
-             <DatabaseZap className="w-4 h-4" /> Otimizar Banco de Dados
-           </button>
-           <button
-             onClick={() => setAdminTab("backup")}
-             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-sm uppercase tracking-widest transition-all whitespace-nowrap ${adminTab === "backup" ? "bg-violet-600 text-white shadow-md shadow-violet-600/20" : "bg-slate-50 text-slate-500 hover:bg-slate-100"}`}
-           >
-             <Save className="w-4 h-4" /> Backup & Restauração
-           </button>
+          {allowedSubTabs.map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setAdminTab(tab.id)}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-extrabold text-sm uppercase tracking-widest transition-all whitespace-nowrap cursor-pointer ${
+                  adminTab === tab.id
+                    ? "bg-violet-600 text-white shadow-md shadow-violet-600/20"
+                    : "bg-slate-50 text-slate-500 hover:bg-slate-100"
+                }`}
+              >
+                <Icon className="w-4 h-4" /> {tab.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -233,9 +285,44 @@ export default function AdminPanel() {
                       onChange={e => setNewRole(e.target.value)}
                       className="w-full bg-slate-50 border border-slate-200 focus:border-violet-500 rounded-xl px-3 py-2.5 text-sm text-slate-800 font-medium outline-none transition-all cursor-pointer"
                     >
-                      <option value="user">Usuário Comum (Acesso Total ao App)</option>
+                      <option value="user">Usuário Comum (Sem Painel de Adm)</option>
+                      <option value="moderator">Moderador (Acesso Personalizado às Abas)</option>
                       <option value="admin">Administrador (Pode gerenciar acessos)</option>
                     </select>
+
+                    {newRole === "moderator" && (
+                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 mt-3 space-y-2.5 animate-fade-in">
+                        <span className="block text-xs font-extrabold uppercase tracking-widest text-slate-500">
+                          Liberar acesso às abas:
+                        </span>
+                        <div className="space-y-2">
+                          {[
+                            { id: "users", label: "Usuários" },
+                            { id: "eval", label: "Construtor da Avaliação Geral" },
+                            { id: "template", label: "Modelo de Relatório" },
+                            { id: "fiscais", label: "Mapeamento Fiscais/CRF" },
+                            { id: "database", label: "Otimizar Banco de Dados" },
+                            { id: "backup", label: "Backup & Restauração" }
+                          ].map(t => (
+                            <label key={t.id} className="flex items-center gap-2.5 text-xs font-bold text-slate-700 cursor-pointer select-none">
+                              <input 
+                                type="checkbox"
+                                checked={newAllowedTabs.includes(t.id)}
+                                onChange={e => {
+                                  if (e.target.checked) {
+                                    setNewAllowedTabs([...newAllowedTabs, t.id]);
+                                  } else {
+                                    setNewAllowedTabs(newAllowedTabs.filter(x => x !== t.id));
+                                  }
+                                }}
+                                className="rounded border-slate-300 text-violet-600 focus:ring-violet-500 w-4 h-4 cursor-pointer"
+                              />
+                              {t.label}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                  </div>
 
                  <div>
@@ -287,7 +374,7 @@ export default function AdminPanel() {
                        <div key={u.email} className="flex flex-col p-4 bg-slate-50/50 border border-slate-100 rounded-2xl gap-3 hover:border-violet-200 transition-all">
                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                            <div className="flex gap-3 items-center">
-                             <div className={`w-10 h-10 rounded-full flex items-center justify-center font-extrabold text-white text-base shrink-0 ${u.role === 'admin' ? 'bg-rose-500' : 'bg-slate-800'}`}>
+                             <div className={`w-10 h-10 rounded-full flex items-center justify-center font-extrabold text-white text-base shrink-0 ${u.role === 'admin' ? 'bg-rose-500' : u.role === 'moderator' ? 'bg-violet-600' : 'bg-slate-800'}`}>
                                {u.email.charAt(0).toUpperCase()}
                              </div>
                              <div>
@@ -296,15 +383,56 @@ export default function AdminPanel() {
                                  {u.role === 'admin' && (
                                    <span className="bg-rose-100 text-rose-700 text-[8px] font-black uppercase px-1.5 py-0.5 rounded tracking-wider">Admin</span>
                                  )}
+                                 {u.role === 'moderator' && (
+                                   <span className="bg-violet-100 text-violet-700 text-[8px] font-black uppercase px-1.5 py-0.5 rounded tracking-wider">Moderador</span>
+                                 )}
+                                 {u.role === 'user' && (
+                                   <span className="bg-slate-100 text-slate-600 text-[8px] font-black uppercase px-1.5 py-0.5 rounded tracking-wider">Usuário</span>
+                                 )}
                                </div>
                                <div className="text-sm text-slate-500 font-medium mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
                                  <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {new Date(u.createdAt).toLocaleDateString('pt-BR')}</span>
                                  <span className="flex items-center gap-1">Add por: {u.addedBy.split('@')[0]}</span>
                                </div>
+
+                               {/* Render Allowed Tabs badges for Moderator */}
+                               {u.role === 'moderator' && u.allowedTabs && u.allowedTabs.length > 0 && (
+                                 <div className="flex flex-wrap gap-1 mt-1.5">
+                                   {u.allowedTabs.map(tabId => {
+                                     const labelMap: Record<string, string> = {
+                                       users: "Usuários",
+                                       eval: "Avaliação",
+                                       template: "Modelos",
+                                       fiscais: "Fiscais",
+                                       database: "Otimização",
+                                       backup: "Backup"
+                                     };
+                                     return (
+                                       <span key={tabId} className="text-[9px] bg-violet-50 text-violet-600 border border-violet-100 px-1.5 py-0.5 rounded-md font-bold font-sans">
+                                         {labelMap[tabId] || tabId}
+                                       </span>
+                                     );
+                                   })}
+                                 </div>
+                               )}
                              </div>
                            </div>
                            
                            <div className="flex gap-2 items-center self-end sm:self-auto">
+                             {editingRoleUser !== u.email && (
+                               <button
+                                 onClick={() => {
+                                   setEditingRoleUser(u.email);
+                                   setEditingRoleValue(u.role || "user");
+                                   setEditingAllowedTabsValue(u.allowedTabs || []);
+                                 }}
+                                 className="p-2 bg-white border border-slate-200 text-violet-600 hover:bg-violet-50 hover:text-violet-800 rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0"
+                                 title="Alterar Nível de Acesso"
+                               >
+                                 <Shield className="w-4 h-4" />
+                               </button>
+                             )}
+
                              {editingPasswordUser !== u.email && (
                                <button
                                  onClick={() => { setEditingPasswordUser(u.email); setEditingPasswordValue(u.password || ""); }}
@@ -341,6 +469,81 @@ export default function AdminPanel() {
                              )}
                            </div>
                          </div>
+
+                         {/* Inline Role & Permission Editor */}
+                         {editingRoleUser === u.email && (
+                           <div className="border-t border-slate-100/80 pt-3 space-y-3 bg-violet-50/20 p-3 rounded-xl border border-violet-100/50">
+                             <span className="text-xs text-violet-950 font-black uppercase tracking-wider font-sans block">
+                               Alterar Nível de Permissão:
+                             </span>
+                             
+                             <div className="flex flex-col sm:flex-row gap-3">
+                               <div className="w-full sm:w-1/2">
+                                 <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">
+                                   Nível / Papel
+                                 </label>
+                                 <select
+                                   value={editingRoleValue}
+                                   onChange={e => setEditingRoleValue(e.target.value)}
+                                   className="w-full bg-white border border-slate-200 focus:border-violet-500 rounded-xl px-2.5 py-2 text-xs text-slate-800 font-semibold outline-none cursor-pointer"
+                                 >
+                                   <option value="user">Usuário Comum (Sem Painel de Adm)</option>
+                                   <option value="moderator">Moderador (Acesso Personalizado às Abas)</option>
+                                   <option value="admin">Administrador (Pode gerenciar acessos)</option>
+                                 </select>
+                               </div>
+
+                               {editingRoleValue === "moderator" && (
+                                 <div className="w-full sm:w-1/2 bg-white border border-slate-200/80 rounded-xl p-3 space-y-1.5">
+                                   <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">
+                                     Liberar acesso às abas:
+                                   </label>
+                                   <div className="space-y-1">
+                                     {[
+                                       { id: "users", label: "Usuários" },
+                                       { id: "eval", label: "Construtor da Avaliação Geral" },
+                                       { id: "template", label: "Modelo de Relatório" },
+                                       { id: "fiscais", label: "Mapeamento Fiscais/CRF" },
+                                       { id: "database", label: "Otimizar Banco de Dados" },
+                                       { id: "backup", label: "Backup & Restauração" }
+                                     ].map(t => (
+                                       <label key={t.id} className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none">
+                                         <input 
+                                           type="checkbox"
+                                           checked={editingAllowedTabsValue.includes(t.id)}
+                                           onChange={e => {
+                                             if (e.target.checked) {
+                                               setEditingAllowedTabsValue([...editingAllowedTabsValue, t.id]);
+                                             } else {
+                                               setEditingAllowedTabsValue(editingAllowedTabsValue.filter(x => x !== t.id));
+                                             }
+                                           }}
+                                           className="rounded text-violet-600 focus:ring-violet-500 w-3.5 h-3.5 cursor-pointer"
+                                         />
+                                         {t.label}
+                                       </label>
+                                     ))}
+                                   </div>
+                                 </div>
+                               )}
+                             </div>
+
+                             <div className="flex justify-end gap-2 pt-2 border-t border-dashed border-violet-100">
+                               <button
+                                 onClick={() => setEditingRoleUser(null)}
+                                 className="px-3 py-1.5 text-xs font-extrabold bg-slate-100 text-slate-500 hover:bg-slate-200 rounded-lg cursor-pointer transition-all"
+                               >
+                                 Cancelar
+                               </button>
+                               <button
+                                 onClick={() => handleUpdateRole(u.email)}
+                                 className="px-3 py-1.5 text-xs font-extrabold bg-violet-600 hover:bg-violet-700 text-white rounded-lg cursor-pointer flex items-center gap-1 shadow-xs transition-all"
+                                >
+                                 <Check className="w-3.5 h-3.5" /> Salvar Permissão
+                               </button>
+                             </div>
+                           </div>
+                         )}
 
                          {/* Inline Password Modifier or Status */}
                          <div className="border-t border-slate-100/80 pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -401,12 +604,12 @@ export default function AdminPanel() {
         <DatabaseOptimizer />
       ) : adminTab === "backup" ? (
         <BackupRestore />
-      ) : (
+      ) : adminTab === "template" ? (
         <div className="space-y-6">
           <TemplateConfig />
           <CustomVariables />
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -112,7 +112,12 @@ export default function AuthLayer({ children }: { children: React.ReactNode }) {
       await signInWithPopup(auth, provider);
     } catch(e: any) {
       if (e.code !== 'auth/popup-closed-by-user') {
-         setErrorMsg(`Erro ao fazer login com Google (Requer provedor ativo): ${e.message || "Erro desconhecido"}.`);
+         const errMsg = e.message || "";
+         if (errMsg.includes("provider is not enabled") || errMsg.includes("Unsupported provider")) {
+            setErrorMsg("Erro de Configuração no Supabase: O Provedor Google não está ativo. Por favor, acesse o painel do seu Supabase, ative o provedor Google e salve.");
+         } else {
+            setErrorMsg(`Erro ao fazer login com Google (Requer provedor ativo): ${errMsg || "Erro desconhecido"}.`);
+         }
       }
     } finally {
       setIsSubmitting(false);
@@ -249,8 +254,25 @@ export default function AuthLayer({ children }: { children: React.ReactNode }) {
               </svg>
               <span>Fazer Login com Google (OAuth)</span>
             </button>
-         </div>
-      </div>
+
+            <div className="w-full bg-amber-50/50 border border-amber-100 rounded-2xl p-4 mt-5 text-[11px] leading-relaxed text-amber-800 font-semibold text-left">
+              <div className="flex gap-2.5 items-start">
+                <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="block font-black text-amber-900 uppercase tracking-tight mb-1">
+                    💡 Dica de Configuração: Provedor Google
+                  </strong>
+                  Se você encontrar o erro <code className="bg-amber-100 px-1 py-0.5 rounded font-mono text-amber-950 font-bold">Unsupported provider: provider is not enabled</code>, ative-o no painel do seu Supabase:
+                  <ol className="list-decimal pl-3.5 mt-1.5 space-y-1">
+                    <li>Acesse <a href="https://supabase.com" target="_blank" rel="noreferrer" className="underline font-black text-violet-700 hover:text-violet-900">supabase.com</a> e abra o seu projeto.</li>
+                    <li>No menu esquerdo, vá em <strong>Authentication</strong> e clique em <strong>Providers</strong>.</li>
+                    <li>Clique na aba <strong>Google</strong>, mude para <strong>Enabled</strong> (Ativado) e preencha o Client ID e Secret ou use o fluxo Simplificado do Google Cloud, e clique em <strong>Save</strong>.</li>
+                  </ol>
+                </div>
+              </div>
+            </div>
+          </div>
+       </div>
     );
   }
 

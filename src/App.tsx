@@ -44,6 +44,16 @@ export default function App() {
     setTimeout(() => setCopiedSql(false), 2000);
   };
 
+  React.useEffect(() => {
+    const handleRlsWarning = () => {
+      setShowRlsWarning(true);
+    };
+    window.addEventListener('supabase_rls_warning', handleRlsWarning);
+    return () => {
+      window.removeEventListener('supabase_rls_warning', handleRlsWarning);
+    };
+  }, []);
+
   // Global state for uploaded data
   const [estabelecimentos, setEstabelecimentos] = useState<Estabelecimento[]>([]);
   const [rts, setRts] = useState<TechnicalResponsible[]>([]);
@@ -146,12 +156,69 @@ export default function App() {
     });
   }, [estabelecimentos, termos]);
 
-  const tabs = [
+  const [userRole, setUserRole] = useState<string>("user");
+  const [allowedTabsState, setAllowedTabsState] = useState<string[]>([]);
+  const [checkingRole, setCheckingRole] = useState<boolean>(true);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  React.useEffect(() => {
+    const unsub = auth.onAuthStateChanged(async (u) => {
+      setCurrentUser(u);
+      if (u) {
+        if (u.email === 'jeffersonayresjefferson@gmail.com') {
+          setUserRole('admin');
+          setAllowedTabsState(['importacao', 'dashboard', 'cidades', 'admin']);
+          setCheckingRole(false);
+          return;
+        }
+        try {
+          const { doc, getDoc, db } = await import("./lib/supabase");
+          const docRef = doc(db, 'authorized_users', u.email || "");
+          const snap = await getDoc(docRef);
+          if (snap.exists()) {
+            const data = snap.data();
+            setUserRole(data?.role || 'user');
+            setAllowedTabsState(data?.allowedTabs || []);
+          } else {
+            setUserRole('user');
+            setAllowedTabsState([]);
+          }
+        } catch (e) {
+          console.error("Error checking role inside App:", e);
+        }
+      } else {
+        setUserRole('user');
+        setAllowedTabsState([]);
+      }
+      setCheckingRole(false);
+    });
+    return unsub;
+  }, []);
+
+  const allTabs = React.useMemo(() => [
     { id: "importacao", label: "Importação XML", icon: Upload, badge: !hasData ? "Pendente" : "Carregado" },
     { id: "dashboard", label: "Painel Geral", icon: FileText, badge: hasData ? "Ativo" : null },
     { id: "cidades", label: "Relatórios", icon: MapPin, badge: null },
     { id: "admin", label: "Painel do Administrador", icon: Users, badge: null }
-  ];
+  ], [hasData]);
+
+  const filteredTabs = React.useMemo(() => {
+    if (checkingRole) return [];
+    if (userRole === "admin" || userRole === "moderator") {
+      return allTabs;
+    }
+    // Default User: no admin tab
+    return allTabs.filter(t => t.id !== "admin");
+  }, [userRole, allTabs, checkingRole]);
+
+  // Handle redirect if activeTab is not in filteredTabs
+  React.useEffect(() => {
+    if (checkingRole) return;
+    const isAllowed = filteredTabs.some(t => t.id === activeTab);
+    if (!isAllowed && filteredTabs.length > 0) {
+      setActiveTab(filteredTabs[0].id);
+    }
+  }, [activeTab, filteredTabs, checkingRole]);
 
   return (
     <div className="min-h-screen bg-[#f0f2f5] flex font-sans select-none print:bg-white text-slate-800 relative">
@@ -216,7 +283,7 @@ export default function App() {
                   </div>
                 )}
 
-                {tabs.map((tab) => {
+                {filteredTabs.map((tab) => {
                   const Icon = tab.icon;
                   const isActive = activeTab === tab.id;
                   const isLocked = !hasData && tab.id !== "importacao" && tab.id !== "admin";
@@ -292,7 +359,7 @@ export default function App() {
       <div className="flex-1 flex flex-col min-h-screen overflow-x-hidden">
         
         {/* Unified top-bar */}
-        <header className="bg-white border-b border-slate-200/85 sticky top-0 z-40 shadow-xs px-4 h-16 flex items-center justify-between print:hidden">
+        <header className="bg-white border-b border-slate-200/85 sticky top-0 z-40 shadow-xs px-4 py-2 min-h-16 flex items-center justify-between print:hidden">
           <div className="flex items-center gap-4">
             <button
               onClick={() => setMobileMenuOpen(true)}
@@ -312,19 +379,84 @@ export default function App() {
                 <span className="text-sm text-slate-400 mt-1 font-sans font-bold uppercase tracking-wider hidden sm:block">
                   GERENCIADOR DE RELATÓRIOS
                 </span>
+                {currentUser && (
+                  <span className="text-[11px] text-violet-600 font-extrabold mt-0.5 tracking-wide leading-none animate-fade-in">
+                    {(() => {
+                      const hour = new Date().getHours();
+                      let greeting = "boa noite";
+                      if (hour >= 5 && hour < 12) {
+                        greeting = "bom dia";
+                      } else if (hour >= 12 && hour < 18) {
+                        greeting = "boa tarde";
+                      }
+                      
+                      let name = "";
+                      if (currentUser.displayName) {
+                        name = currentUser.displayName;
+                      } else if (currentUser.email) {
+                        const prefix = currentUser.email.split("@")[0];
+                        name = prefix.charAt(0).toUpperCase() + prefix.slice(1);
+                      }
+                      return `Olá, ${greeting}, ${name}!`;
+                    })()}
+                  </span>
+                )}
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             <h2 className="text-sm font-black text-violet-600 uppercase font-display tracking-tight hidden sm:flex items-center gap-2 px-3 py-1 bg-violet-50 rounded-lg">
-              <span>{tabs.find(t => t.id === activeTab)?.label}</span>
+              <span>{filteredTabs.find(t => t.id === activeTab)?.label || allTabs.find(t => t.id === activeTab)?.label}</span>
             </h2>
           </div>
         </header>
 
 
         <main className="flex-1 w-full px-4 sm:px-6 lg:px-8 py-6 print:p-0 print:m-0">
+          {showRlsWarning && (
+            <div className="bg-rose-50 border-2 border-rose-200 rounded-3xl p-6 mb-6 text-sm flex flex-col md:flex-row gap-5 items-start shadow-lg shadow-rose-100/50">
+              <div className="p-3.5 bg-rose-500 text-white rounded-2xl shrink-0">
+                <ShieldAlert className="w-7 h-7" />
+              </div>
+              <div className="flex-1 space-y-4">
+                <div>
+                  <h4 className="text-base font-black text-rose-950 uppercase tracking-tight">
+                    🚨 ALERTA: Segurança RLS Ativada no seu seu Banco de Dados Supabase
+                  </h4>
+                  <p className="text-rose-800 font-semibold leading-relaxed mt-1 font-sans">
+                    Gravações no banco de dados estão sendo bloqueadas pelo Supabase. Para corrigir isso e desativar o controle de segurança das tabelas (Row-Level Security) permitindo leituras e escritas rápidas, copie as linhas abaixo, acesse o <strong>SQL Editor</strong> do seu painel do Supabase, cole e clique em <strong>Run</strong> (Executar):
+                  </p>
+                </div>
+                
+                <div className="relative">
+                  <pre className="bg-slate-900 text-slate-100 font-mono text-xs rounded-2xl p-4 overflow-x-auto shadow-inner leading-relaxed border border-slate-950 max-h-60">
+                    {sqlToCopy}
+                  </pre>
+                  <button
+                    onClick={handleCopySql}
+                    className="absolute top-2.5 right-2.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl text-xs font-black shadow-sm flex items-center gap-1.5 cursor-pointer transition-all border border-slate-700 active:scale-95"
+                  >
+                    <ClipboardCheck className="w-3.5 h-3.5 text-emerald-400" />
+                    {copiedSql ? "Copiado!" : "Copiar Comando SQL"}
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 pt-1">
+                  <button
+                    onClick={() => {
+                      localStorage.removeItem('supabase_rls_policy_active_warning');
+                      setShowRlsWarning(false);
+                    }}
+                    className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-extrabold text-xs tracking-wider uppercase cursor-pointer shadow-md shadow-rose-600/15 transition-all active:scale-97"
+                  >
+                    Ocultar Aviso / Já executei no Supabase
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
@@ -360,7 +492,12 @@ export default function App() {
                 />
               )}
 
-              {activeTab === "admin" && <AdminPanel />}
+              {activeTab === "admin" && (
+                <AdminPanel 
+                  currentUserRole={userRole} 
+                  currentUserAllowedTabs={allowedTabsState} 
+                />
+              )}
             </motion.div>
           </AnimatePresence>
         </main>
