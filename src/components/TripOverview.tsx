@@ -21,7 +21,8 @@ import {
   FileText,
   Plus,
   Trash2,
-  PenSquare
+  PenSquare,
+  Cog
 } from "lucide-react";
 import { collection, getDocs, doc, getDoc, db } from "../lib/supabase";
 import { Estabelecimento, TermoSanitario, EvalItem, EvalVariable, TechnicalResponsible } from "../types";
@@ -172,6 +173,9 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
   });
 
   const [dbEvalItems, setDbEvalItems] = useState<EvalItem[]>([]);
+  const [aiJustifications, setAiJustifications] = useState<Record<string, string>>({});
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
   const [dbEvalVariables, setDbEvalVariables] = useState<EvalVariable[]>([]);
   const [dbEvalIntroText, setDbEvalIntroText] = useState<string>("");
   const [customVariablesData, setCustomVariablesData] = useState<Record<string, Record<string, string>[]>>({});
@@ -471,6 +475,76 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
     setEvalItems(newEvals);
   };
 
+  const runAiAutomark = async (targetCity?: string) => {
+    const city = targetCity || selectedCity;
+    if (!city) return;
+    setIsAiLoading(true);
+    setAiError(null);
+    try {
+      const cityEstabs = visibleEstabelecimentos.filter(e => e.cidade.toUpperCase() === city.toUpperCase());
+      const estabIds = cityEstabs.map(e => e.inscricao);
+      const cityTermos = termos.filter(t => estabIds.includes(t.estabelecimentoId));
+
+      const payload = {
+        establishments: cityEstabs.map(e => ({
+          inscricao: e.inscricao,
+          fantasia: e.fantasia,
+          razaoSocial: e.razaoSocial,
+          cnpj: e.cnpj,
+          nomeArea: e.nomeArea,
+          cidade: e.cidade
+        })),
+        termos: cityTermos.map(t => ({
+          estabelecimentoId: t.estabelecimentoId,
+          obs: t.obs,
+          rtPresente: t.rtPresente
+        })),
+        evalItems: dbEvalItems.map(item => ({
+          id: item.id,
+          title: item.title,
+          description: item.description,
+          paragraph: item.paragraph
+        }))
+      };
+
+      const response = await fetch("/api/gemini/automark", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error("Erro na resposta do servidor de IA");
+      }
+
+      const data = await response.json();
+      if (data && Array.isArray(data.results)) {
+        setEvalItems(prev => {
+          const next = { ...prev };
+          data.results.forEach((res: { id: string; matched: boolean }) => {
+            next[res.id] = res.matched;
+          });
+          return next;
+        });
+
+        setAiJustifications(prev => {
+          const next = { ...prev };
+          data.results.forEach((res: { id: string; justification: string }) => {
+            next[res.id] = res.justification;
+          });
+          return next;
+        });
+      }
+    } catch (err: any) {
+      console.error("AI AutoMark failed:", err);
+      setAiError(err.message || "Erro desconhecido ao executar IA");
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
   // Calculate unique list of cities present in establishing records
   const uniqueCities = React.useMemo(() => {
     return Array.from(new Set<string>(visibleEstabelecimentos.map(e => e.cidade.toUpperCase()))).sort();
@@ -485,8 +559,9 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
   React.useEffect(() => {
     if (selectedCity && autoMarkActive && dbEvalItems.length > 0) {
       autoMarkFromXml();
+      runAiAutomark(selectedCity);
     }
-  }, [selectedCity, autoMarkActive, dbEvalItems, visibleEstabelecimentos, termos]);
+  }, [selectedCity, autoMarkActive, dbEvalItems]);
 
   // Aggregate stats per city
   const citySummaries = React.useMemo(() => uniqueCities.map(city => {
@@ -1368,37 +1443,71 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
 
 
                 {/* Opção: Marcar Automaticamente pelo sistema */}
-                <div className="bg-violet-50/50 border border-violet-150 rounded-2xl p-4 flex items-center justify-between gap-4">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-1.5">
-                      <Sparkles className="w-4 h-4 text-violet-600 animate-pulse shrink-0" />
-                      <span className="text-sm font-extrabold text-violet-950 uppercase tracking-wider block font-display">Marcar Automaticamente pelo sistema</span>
+                <div className="bg-violet-50/50 border border-violet-150 rounded-2xl p-5 space-y-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1.5">
+                        <Sparkles className="w-4.5 h-4.5 text-violet-600 animate-pulse shrink-0" />
+                        <span className="text-sm font-extrabold text-violet-950 uppercase tracking-wider block font-display">Marcar Automaticamente (IA e Heurística)</span>
+                      </div>
+                      <p className="text-sm text-slate-500 font-medium leading-relaxed max-w-lg">
+                        Cruza os dados de vistorias técnicas e observações de campo deste polo. Combina regras heurísticas rápidas com análise de IA avançada.
+                      </p>
                     </div>
-                    <p className="text-sm text-slate-500 font-medium leading-relaxed max-w-lg">
-                      Quando ativado, o cruzamento inteligente de dados XML identifica e marca de forma inteligente as opções condizentes com os dados de vistorias técnicas deste Polo.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const newState = !autoMarkActive;
-                      setAutoMarkActive(newState);
-                      if (newState) {
-                        autoMarkFromXml();
-                      }
-                    }}
-                    className={`w-12 h-6.5 rounded-full transition-all duration-300 ease-in-out relative flex items-center shrink-0 cursor-pointer outline-none shadow-xs ${
-                      autoMarkActive ? "bg-violet-600" : "bg-slate-300"
-                    }`}
-                  >
-                    <span
-                      className={`absolute bg-white w-5.5 h-5.5 rounded-full transition-transform duration-300 shadow-md flex items-center justify-center ${
-                        autoMarkActive ? "translate-x-6" : "translate-x-0.5"
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newState = !autoMarkActive;
+                        setAutoMarkActive(newState);
+                        if (newState) {
+                          autoMarkFromXml();
+                          runAiAutomark();
+                        }
+                      }}
+                      className={`w-12 h-6.5 rounded-full transition-all duration-300 ease-in-out relative flex items-center shrink-0 cursor-pointer outline-none shadow-xs ${
+                        autoMarkActive ? "bg-violet-600" : "bg-slate-300"
                       }`}
                     >
-                      {autoMarkActive && <Check className="w-3 h-3 text-violet-600 font-bold" />}
-                    </span>
-                  </button>
+                      <span
+                        className={`absolute bg-white w-5.5 h-5.5 rounded-full transition-transform duration-300 shadow-md flex items-center justify-center ${
+                          autoMarkActive ? "translate-x-6" : "translate-x-0.5"
+                        }`}
+                      >
+                        {autoMarkActive && <Check className="w-3 h-3 text-violet-600 font-bold" />}
+                      </span>
+                    </button>
+                  </div>
+
+                  {autoMarkActive && (
+                    <div className="pt-3 border-t border-violet-100 flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-2">
+                        {isAiLoading ? (
+                          <span className="flex items-center gap-1.5 text-violet-700 font-bold animate-pulse">
+                            <span className="inline-block w-2 h-2 rounded-full bg-violet-600 animate-ping" />
+                            Análise Avançada de IA em andamento...
+                          </span>
+                        ) : (
+                          <span className="text-emerald-700 font-bold flex items-center gap-1">
+                            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
+                            Análise refinada com IA concluída com sucesso!
+                          </span>
+                        )}
+                        {aiError && (
+                          <span className="text-rose-600 font-bold">
+                            (Erro: {aiError})
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        disabled={isAiLoading}
+                        onClick={() => runAiAutomark()}
+                        className="bg-white border border-violet-200 text-violet-700 px-3 py-1.5 rounded-lg font-bold hover:bg-violet-50 hover:border-violet-300 transition-all shadow-3xs disabled:opacity-50 cursor-pointer"
+                      >
+                        {isAiLoading ? "Processando..." : "Reforçar Análise de IA ✨"}
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-6">
@@ -1489,6 +1598,15 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
                                       {isExpanded && (
                                         <div className="mt-2 p-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-600 italic leading-relaxed">
                                           {item.paragraph}
+                                        </div>
+                                      )}
+
+                                      {aiJustifications[item.id] && (
+                                        <div className="mt-2.5 p-2.5 bg-violet-50/70 border border-violet-100 rounded-xl text-xs text-violet-850 flex items-start gap-1.5 leading-relaxed animate-in fade-in duration-250">
+                                          <Sparkles className="w-3.5 h-3.5 text-violet-600 shrink-0 mt-0.5" />
+                                          <div>
+                                            <strong className="text-violet-950">Justificativa da IA:</strong> {aiJustifications[item.id]}
+                                          </div>
                                         </div>
                                       )}
                                     </div>
@@ -1777,6 +1895,12 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
                         }
                       });
                       setEvalItems(cleared);
+                      setAutoMarkActive(false);
+                      setCustomVariablesData({});
+                      setLabsInfra([]);
+                      setLabsLaminas([]);
+                      setHospitals([]);
+                      setAiJustifications({});
                     }}
                     className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs uppercase tracking-wide rounded-lg cursor-pointer transition-all"
                   >
@@ -1791,6 +1915,30 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
                 </button>
               </div>
             </motion.div>
+          </motion.div>
+        )}
+
+        {isAiLoading && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-[10001] flex flex-col items-center justify-center p-6 text-center select-none"
+          >
+            <div className="flex flex-col items-center gap-6 max-w-md">
+              <div className="relative">
+                <div className="absolute inset-0 bg-violet-500/30 rounded-full blur-2xl animate-pulse scale-150" />
+                <Cog className="w-20 h-20 text-violet-500 animate-spin relative z-10" style={{ animationDuration: '2.5s' }} />
+              </div>
+              <div className="space-y-2 relative z-10">
+                <h4 className="text-xl font-black text-white uppercase tracking-wider font-display leading-snug">
+                  A IA está analisando todo o relatório, aguarde!...
+                </h4>
+                <p className="text-sm text-slate-400 font-medium leading-relaxed">
+                  Cruzando dados de visitas técnicas, conformidades e observações de campo de {selectedCity} para sugestões de enquadramento legal automático.
+                </p>
+              </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
