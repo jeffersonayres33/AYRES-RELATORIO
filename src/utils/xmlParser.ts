@@ -4,9 +4,19 @@ import { Estabelecimento, TechnicalResponsible, TermoSanitario } from "../types"
  * Utility to parse Delphi-compatible XML documents using standard DOMParser.
  */
 
+const getDirectTagText = (element: Element, tagName: string, defaultValue = "null"): string => {
+  const children = element.children;
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i];
+    if (child.tagName === tagName) {
+      return child.textContent ? child.textContent.trim() : defaultValue;
+    }
+  }
+  return defaultValue;
+};
+
 const getTagText = (element: Element, tagName: string, defaultValue = "null"): string => {
-  const node = element.getElementsByTagName(tagName)[0];
-  return node && node.textContent ? node.textContent.trim() : defaultValue;
+  return getDirectTagText(element, tagName, defaultValue);
 };
 
 const getTagNumber = (element: Element, tagName: string, defaultValue = 0): number => {

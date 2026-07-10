@@ -10,7 +10,8 @@ import {
   Code,
   FileCode2,
   Trash2,
-  ListFilter
+  ListFilter,
+  Cog
 } from "lucide-react";
 import { parseLoteXML, parseTermos0XML, parseNovosCadastros20XML } from "../utils/xmlParser";
 import { Estabelecimento, TechnicalResponsible, TermoSanitario } from "../types";
@@ -27,6 +28,8 @@ interface ImporterProps {
 export default function Importer({ onDataImported }: ImporterProps) {
   const [dragActive, setDragActive] = useState<Record<string, boolean>>({});
   const [status, setStatus] = useState<Record<string, { success: boolean; msg: string; count: number }>>({});
+  const [isImporting, setIsImporting] = useState(false);
+  const [importProgressMsg, setImportProgressMsg] = useState("");
   
   const tempEstabsRef = useRef<Estabelecimento[]>([]);
   const tempRtsRef = useRef<TechnicalResponsible[]>([]);
@@ -46,6 +49,10 @@ export default function Importer({ onDataImported }: ImporterProps) {
     const files = Array.from(filesList);
     if (files.length === 0) return;
 
+    setIsImporting(true);
+    const sizeMb = files.reduce((acc, f) => acc + f.size, 0) / (1024 * 1024);
+    setImportProgressMsg(`Lendo ${files.length} arquivo(s) (${sizeMb.toFixed(2)} MB)...`);
+
     const contentPromises = files.map(file => new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = e => resolve(e.target?.result as string);
@@ -54,6 +61,7 @@ export default function Importer({ onDataImported }: ImporterProps) {
     }));
 
     Promise.all(contentPromises).then((contents) => {
+      setImportProgressMsg("Processando e cruzando dados do XML. Aguarde, por favor...");
       setInspectedXmlType(type);
       setInspectedXmlContent(contents[0] || "");
 
@@ -119,10 +127,15 @@ export default function Importer({ onDataImported }: ImporterProps) {
             ...prev,
             [type]: { success: false, msg: `Erro ao analisar XML: arquivo corrompido ou incompatível`, count: 0 }
           }));
+        } finally {
+          setIsImporting(false);
+          setImportProgressMsg("");
         }
-      }, 100);
+      }, 80);
     }).catch(err => {
       console.error("Error reading files", err);
+      setIsImporting(false);
+      setImportProgressMsg("");
     });
   };
 
@@ -471,6 +484,33 @@ export default function Importer({ onDataImported }: ImporterProps) {
             </div>
           </div>
         </div>
+      )}
+
+      {isImporting && (
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-[10001] flex flex-col items-center justify-center p-6 text-center select-none"
+        >
+          <div className="flex flex-col items-center gap-6 max-w-md">
+            <div className="relative">
+              <div className="absolute inset-0 bg-violet-500/30 rounded-full blur-2xl animate-pulse scale-150" />
+              <Cog className="w-20 h-20 text-violet-500 animate-spin relative z-10" style={{ animationDuration: '2.5s' }} />
+            </div>
+            <div className="space-y-2 relative z-10">
+              <h4 className="text-xl font-black text-white uppercase tracking-wider font-display leading-snug">
+                Carregando e Processando Lote XML...
+              </h4>
+              <p className="text-sm text-slate-400 font-medium leading-relaxed">
+                {importProgressMsg}
+              </p>
+              <div className="pt-2 text-xs text-violet-400/80 font-mono animate-pulse">
+                Por favor, não feche a janela ou recarregue a página.
+              </div>
+            </div>
+          </div>
+        </motion.div>
       )}
 
     </div>

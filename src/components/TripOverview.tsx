@@ -545,6 +545,31 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
     }
   };
 
+  const clearGeneralEvaluation = () => {
+    const cleared: Record<string, boolean> = {};
+    dbEvalItems.forEach(item => {
+      if (item.isHidden && item.defaultChecked) {
+        cleared[item.id] = true;
+      } else if (item.isHidden) {
+        cleared[item.id] = !!evalItems[item.id];
+      } else {
+        cleared[item.id] = false;
+      }
+    });
+    setEvalItems(cleared);
+    setAutoMarkActive(false);
+    setCustomVariablesData({});
+    setLabsInfra([]);
+    setLabsLaminas([]);
+    setHospitals([]);
+    setAiJustifications({});
+  };
+
+  const handleSelectCity = (city: string) => {
+    setSelectedCity(city);
+    clearGeneralEvaluation();
+  };
+
   // Calculate unique list of cities present in establishing records
   const uniqueCities = React.useMemo(() => {
     return Array.from(new Set<string>(visibleEstabelecimentos.map(e => e.cidade.toUpperCase()))).sort();
@@ -1060,7 +1085,7 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
           return (
             <button
               key={sum.cidade}
-              onClick={() => setSelectedCity(sum.cidade)}
+              onClick={() => handleSelectCity(sum.cidade)}
               className={`p-5 rounded-3xl border text-left transition-all duration-300 relative overflow-hidden group cursor-pointer ${
                 isSelected
                   ? "bg-white border-violet-500 text-slate-900 shadow-md ring-2 ring-violet-500/20"
@@ -1883,25 +1908,7 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
                     {Object.values(evalItems).filter(Boolean).length} cláusulas ativas na Avaliação Geral
                   </span>
                   <button 
-                    onClick={() => {
-                      const cleared: Record<string, boolean> = {};
-                      dbEvalItems.forEach(item => {
-                        if (item.isHidden && item.defaultChecked) {
-                           cleared[item.id] = true;
-                        } else if (item.isHidden) {
-                           cleared[item.id] = !!evalItems[item.id];
-                        } else {
-                           cleared[item.id] = false;
-                        }
-                      });
-                      setEvalItems(cleared);
-                      setAutoMarkActive(false);
-                      setCustomVariablesData({});
-                      setLabsInfra([]);
-                      setLabsLaminas([]);
-                      setHospitals([]);
-                      setAiJustifications({});
-                    }}
+                    onClick={clearGeneralEvaluation}
                     className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs uppercase tracking-wide rounded-lg cursor-pointer transition-all"
                   >
                     Limpar Seleção
