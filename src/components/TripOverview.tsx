@@ -176,6 +176,129 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
   const [aiJustifications, setAiJustifications] = useState<Record<string, string>>({});
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const runClientSideAutomark = async (payload: any, apiKeyToUse: string) => {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKeyToUse}`;
+    const prompt = `Você é um assistente analista especializado em fiscalização técnica do CRF/AM.
+Sua missão é realizar um cruzamento inteligente de dados de fiscalização para identificar quais critérios de infrações sanitárias ocorreram na cidade.
+
+--- ESTABELECIMENTOS INSPECIONADOS NA CIDADE ---
+${JSON.stringify(payload.establishments || [], null, 2)}
+
+--- TERMOS DE VISITA E OBSERVAÇÕES DOS FISCAIS EM CAMPO ---
+${JSON.stringify(payload.termos || [], null, 2)}
+
+--- CRITÉRIOS DE AVALIAÇÃO DISPONÍVEIS ---
+${JSON.stringify(payload.evalItems.map((item: any) => ({ id: item.id, title: item.title, description: item.description, paragraph: item.paragraph })), null, 2)}
+
+Analise minuciosamente as observações de campo e as informações de presença de Responsável Técnico ("rtPresente": "NÃO" ou similar) para cada critério.
+Para critérios genéricos ou padrão como apelos ou parágrafos de conclusão de avaliação que devem sempre constar no relatório, marque como true se eles forem padrão ou se forem de apelo à fiscalização.
+Considere termos técnicos equivalentes, sinônimos, e abreviações comuns de fiscalização sanitária brasileira (ex: "AFE", "Alvará", "RDC 44", "Receita controlada", "Portaria 344", "UBS", "Posto de Saúde", "CAF", "CFT", "REMUME", "Lâminas", "Laudos", "Laboratório", "Supermercado").
+
+Determine quais itens de avaliação devem ser marcados (matched: true ou false) e forneça uma justificativa concisa (até 1 frase em português) citando as evidências ou dados específicos do estabelecimento/termo correspondente.
+IMPORTANTE: Sempre que citar ou basear a decisão em um estabelecimento específico, inclua obrigatoriamente o seu Nome Fantasia ou Razão Social juntamente com o respectivo CNPJ do estabelecimento no texto da justificativa (exemplo: "Identificada ausência de RT na Farmácia Silva (CNPJ: 12.345.678/0001-90) de acordo com as observações do fiscal.").`;
+
+    const body = {
+      contents: [
+        {
+          parts: [
+            {
+              text: prompt
+            }
+          ]
+        }
+      ],
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "OBJECT",
+          properties: {
+            results: {
+              type: "ARRAY",
+              items: {
+                type: "OBJECT",
+                properties: {
+                  id: { type: "STRING", description: "O ID único do item de avaliação correspondente." },
+                  matched: { type: "BOOLEAN", description: "Se o critério de infração ou irregularidade foi identificado nos dados." },
+                  justification: { type: "STRING", description: "Uma breve explicação de no máximo 1 frase do porquê foi marcado ou não com base nos dados fornecidos." }
+                },
+                required: ["id", "matched", "justification"]
+              }
+            }
+          },
+          required: ["results"]
+        }
+      }
+    };
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      const errMsg = errorData?.error?.message || `HTTP ${res.status}`;
+      throw new Error(`Erro na API direta do Gemini: ${errMsg}`);
+    }
+
+    const data = await res.json();
+    const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!textResponse) {
+      throw new Error("Resposta vazia da API do Gemini.");
+    }
+
+    try {
+      return JSON.parse(textResponse);
+    } catch (err) {
+      console.error("Failed to parse client-side Gemini response as JSON", textResponse);
+      throw new Error("Erro de formatação na resposta da IA.");
+    }
+  };
+
+  const runClientSideCorrect = async (text: string, apiKeyToUse: string) => {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKeyToUse}`;
+    const prompt = `Você é um corretor ortográfico e gramatical técnico. Corrija o texto abaixo. 
+Mantenha a estrutura de parágrafos idêntica. Melhore o espaçamento, pontuação e fluidez se necessário, mas mantenha a integridade do conteúdo legal, técnico e formal.
+Não adicione cabeçalhos, introduções ou explicações. Retorne apenas o texto corrigido estruturado.\n\n${text}`;
+
+    const body = {
+      contents: [
+        {
+          parts: [
+            {
+              text: prompt
+            }
+          ]
+        }
+      ]
+    };
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      const errMsg = errorData?.error?.message || `HTTP ${res.status}`;
+      throw new Error(`Erro na API direta do Gemini: ${errMsg}`);
+    }
+
+    const data = await res.json();
+    const correctedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!correctedText) {
+      throw new Error("Resposta vazia da API do Gemini.");
+    }
+
+    return correctedText;
+  };
+
   const [dbEvalVariables, setDbEvalVariables] = useState<EvalVariable[]>([]);
   const [dbEvalIntroText, setDbEvalIntroText] = useState<string>("");
   const [customVariablesData, setCustomVariablesData] = useState<Record<string, Record<string, string>[]>>({});
@@ -507,19 +630,51 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
         }))
       };
 
-      const response = await fetch("/api/gemini/automark", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(payload)
-      });
+      let data;
+      let useClientFallback = false;
+      const appKey = ((import.meta as any).env?.VITE_GEMINI_API_KEY as string) || "";
+      const isStaticEnv = window.location.hostname.includes("github.io") || window.location.hostname.includes("github.preview");
 
-      if (!response.ok) {
-        throw new Error("Erro na resposta do servidor de IA");
+      if (isStaticEnv && appKey) {
+        useClientFallback = true;
       }
 
-      const data = await response.json();
+      if (!useClientFallback) {
+        try {
+          const response = await fetch("/api/gemini/automark", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify(payload)
+          });
+
+          if (response.ok) {
+            data = await response.json();
+          } else {
+            if (appKey) {
+              useClientFallback = true;
+            } else {
+              throw new Error("O servidor de IA está indisponível e nenhuma chave oculta da aplicação foi configurada.");
+            }
+          }
+        } catch (serverErr: any) {
+          console.warn("Server call failed, attempting client fallback", serverErr);
+          if (appKey) {
+            useClientFallback = true;
+          } else {
+            throw serverErr;
+          }
+        }
+      }
+
+      if (useClientFallback) {
+        if (!appKey) {
+          throw new Error("Chave de API do Gemini não configurada na aplicação (VITE_GEMINI_API_KEY ausente).");
+        }
+        data = await runClientSideAutomark(payload, appKey);
+      }
+
       if (data && Array.isArray(data.results)) {
         setEvalItems(prev => {
           const next = { ...prev };
@@ -908,19 +1063,51 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
     if (autoCorrectText) {
       showLoading("Revisando texto com IA (Isso pode demorar alguns segundos)...");
       try {
-        const response = await fetch("/api/gemini/correct", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: compiledText })
-        });
-        if (response.ok) {
-           const data = await response.json();
-           if (data.correctedText) compiledText = data.correctedText;
-        } else {
-           console.error("Falha ao corrigir com IA");
+        let correctedText = null;
+        let useClientFallback = false;
+        const appKey = ((import.meta as any).env?.VITE_GEMINI_API_KEY as string) || "";
+        const isStaticEnv = window.location.hostname.includes("github.io") || window.location.hostname.includes("github.preview");
+
+        if (isStaticEnv && appKey) {
+          useClientFallback = true;
+        }
+
+        if (!useClientFallback) {
+          try {
+            const response = await fetch("/api/gemini/correct", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ text: compiledText })
+            });
+            if (response.ok) {
+              const data = await response.json();
+              if (data.correctedText) correctedText = data.correctedText;
+            } else if (appKey) {
+              useClientFallback = true;
+            } else {
+              console.error("Falha ao corrigir com IA");
+            }
+          } catch (serverErr) {
+            console.warn("Server correction failed, trying client fallback", serverErr);
+            if (appKey) {
+              useClientFallback = true;
+            } else {
+              console.error("Failed to auto-correct text", serverErr);
+            }
+          }
+        }
+
+        if (useClientFallback) {
+          if (appKey) {
+            correctedText = await runClientSideCorrect(compiledText, appKey);
+          }
+        }
+
+        if (correctedText) {
+          compiledText = correctedText;
         }
       } catch (err) {
-        console.error("Failed to auto-correct text", err);
+        console.error("Failed to auto-correct text with fallback", err);
       }
     }
 
@@ -1504,33 +1691,35 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
                   </div>
 
                   {autoMarkActive && (
-                    <div className="pt-3 border-t border-violet-100 flex flex-wrap items-center justify-between gap-2 text-xs">
-                      <div className="flex items-center gap-2">
-                        {isAiLoading ? (
-                          <span className="flex items-center gap-1.5 text-violet-700 font-bold animate-pulse">
-                            <span className="inline-block w-2 h-2 rounded-full bg-violet-600 animate-ping" />
-                            Análise Avançada de IA em andamento...
-                          </span>
-                        ) : (
-                          <span className="text-emerald-700 font-bold flex items-center gap-1">
-                            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
-                            Análise refinada com IA concluída com sucesso!
-                          </span>
-                        )}
-                        {aiError && (
-                          <span className="text-rose-600 font-bold">
-                            (Erro: {aiError})
-                          </span>
-                        )}
+                    <div className="space-y-4 pt-3 border-t border-violet-100">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-2">
+                          {isAiLoading ? (
+                            <span className="flex items-center gap-1.5 text-violet-700 font-bold animate-pulse">
+                              <span className="inline-block w-2 h-2 rounded-full bg-violet-600 animate-ping" />
+                              Análise Avançada de IA em andamento...
+                            </span>
+                          ) : (
+                            <span className="text-emerald-700 font-bold flex items-center gap-1">
+                              <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
+                              Análise refinada com IA concluída com sucesso!
+                            </span>
+                          )}
+                          {aiError && (
+                            <span className="text-rose-600 font-bold">
+                              (Erro: {aiError})
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          disabled={isAiLoading}
+                          onClick={() => runAiAutomark()}
+                          className="bg-white border border-violet-200 text-violet-700 px-3 py-1.5 rounded-lg font-bold hover:bg-violet-50 hover:border-violet-300 transition-all shadow-3xs disabled:opacity-50 cursor-pointer text-xs"
+                        >
+                          {isAiLoading ? "Processando..." : "Reforçar Análise de IA ✨"}
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        disabled={isAiLoading}
-                        onClick={() => runAiAutomark()}
-                        className="bg-white border border-violet-200 text-violet-700 px-3 py-1.5 rounded-lg font-bold hover:bg-violet-50 hover:border-violet-300 transition-all shadow-3xs disabled:opacity-50 cursor-pointer"
-                      >
-                        {isAiLoading ? "Processando..." : "Reforçar Análise de IA ✨"}
-                      </button>
                     </div>
                   )}
                 </div>
