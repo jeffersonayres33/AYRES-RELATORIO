@@ -65,14 +65,14 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
     if (!termos || termos.length === 0) return "15/05/2026 a 22/05/2026";
     
     // Filter by city if specified
-    const filteredTermos = city && estabelecimentos && estabelecimentos.length > 0
+    const filteredTermos = city && city.trim() !== "" && estabelecimentos && estabelecimentos.length > 0
       ? (() => {
           const cityInscricoes = new Set(
             estabelecimentos
               .filter(e => e.cidade.toUpperCase() === city.toUpperCase())
-              .map(e => e.inscricao)
+              .map(e => e.inscricao.trim().toUpperCase())
           );
-          return termos.filter(t => t.estabelecimentoId && cityInscricoes.has(t.estabelecimentoId));
+          return termos.filter(t => t.estabelecimentoId && cityInscricoes.has(t.estabelecimentoId.trim().toUpperCase()));
         })()
       : termos;
 
@@ -138,9 +138,9 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
   }, [termos, estabelecimentos]);
 
   React.useEffect(() => {
-    const period = calculatePeriod(selectedCity);
+    const period = calculatePeriod("");
     setTravelPeriod(period);
-  }, [selectedCity, termos, estabelecimentos, calculatePeriod]);
+  }, [termos, estabelecimentos, calculatePeriod]);
 
   // Checks if an establishment was found closed
   const isEstabClosed = React.useCallback((e: Estabelecimento) => {
@@ -745,13 +745,13 @@ Não adicione cabeçalhos, introduções ou explicações. Retorne apenas o text
 
   // Aggregate stats per city
   const citySummaries = React.useMemo(() => uniqueCities.map(city => {
-    const cityEstabs = visibleEstabelecimentos.filter(e => e.cidade.toUpperCase() === city);
-    const estabIds = cityEstabs.map(e => e.inscricao);
-    const cityTermos = termos.filter(t => estabIds.includes(t.estabelecimentoId));
+    const cityEstabs = estabelecimentos.filter(e => e.cidade.toUpperCase() === city);
+    const estabIds = new Set(cityEstabs.map(e => e.inscricao.trim().toUpperCase()));
+    const cityTermos = termos.filter(t => t.estabelecimentoId && estabIds.has(t.estabelecimentoId.trim().toUpperCase()));
 
     const totalInspecoes = cityTermos.length;
-    const totalIntimacoes = cityTermos.filter(t => t.nrSeqIntimacao && t.nrSeqIntimacao !== "null").length;
-    const totalAutos = cityTermos.filter(t => t.nrSeqAuto && t.nrSeqAuto !== "null").length;
+    const totalIntimacoes = cityTermos.filter(t => t.nrSeqIntimacao && t.nrSeqIntimacao !== "null" && t.nrSeqIntimacao.trim() !== "").length;
+    const totalAutos = cityTermos.filter(t => t.nrSeqAuto && t.nrSeqAuto !== "null" && t.nrSeqAuto.trim() !== "").length;
     const novos = cityEstabs.filter(e => e.inscricao.toUpperCase().includes("I")).length;
     const fechadas = cityEstabs.filter(e => isEstabClosed(e)).length;
 
@@ -764,7 +764,7 @@ Não adicione cabeçalhos, introduções ou explicações. Retorne apenas o text
       fechadas,
       estabelecimentos: cityEstabs
     };
-  }), [uniqueCities, visibleEstabelecimentos, termos, isEstabClosed]);
+  }), [uniqueCities, estabelecimentos, termos, isEstabClosed]);
 
   const activeSum = citySummaries.find(s => s.cidade === selectedCity);
   const cityEstabs = activeSum ? activeSum.estabelecimentos : [];
@@ -1188,45 +1188,23 @@ Não adicione cabeçalhos, introduções ou explicações. Retorne apenas o text
   };
 
   const downloadTravelSummary = async () => {
-    // Generate filtered establishments based on includeClosed flag for each city inside travel summary
-    const filteredCitySummaries = citySummaries.map(sum => {
-      const filteredEsts = sum.estabelecimentos.filter(e => includeClosed || !isEstabClosed(e));
-      const filteredIds = filteredEsts.map(e => e.inscricao);
-      const filteredCityTermos = termos.filter(t => filteredIds.includes(t.estabelecimentoId));
-      
-      const totalInspecoes = filteredCityTermos.length;
-      const totalIntimacoes = filteredCityTermos.filter(t => t.nrSeqIntimacao && t.nrSeqIntimacao !== "null").length;
-      const totalAutos = filteredCityTermos.filter(t => t.nrSeqAuto && t.nrSeqAuto !== "null").length;
-      const novos = filteredEsts.filter(e => e.inscricao.toUpperCase().includes("I")).length;
-
-      return {
-        ...sum,
-        inspecoes: totalInspecoes,
-        intimacoes: totalIntimacoes,
-        autos: totalAutos,
-        novos,
-        estabelecimentos: filteredEsts
-      };
-    });
-
-    const totalTermos = filteredCitySummaries.reduce((acc, s) => acc + s.inspecoes, 0);
-    
-    const countFiscalizados = totalTermos;
-    const countIntimados = filteredCitySummaries.reduce((acc, s) => acc + s.intimacoes, 0);
-    const countAutuados = filteredCitySummaries.reduce((acc, s) => acc + s.autos, 0);
-    const countNovos = filteredCitySummaries.reduce((acc, s) => acc + s.novos, 0);
+    const totalCityTermos = citySummaries.reduce((acc, s) => acc + s.inspecoes, 0);
+    const countFiscalizados = Math.max(termos.length, totalCityTermos);
+    const countIntimados = citySummaries.reduce((acc, s) => acc + s.intimacoes, 0);
+    const countAutuados = citySummaries.reduce((acc, s) => acc + s.autos, 0);
+    const countNovos = citySummaries.reduce((acc, s) => acc + s.novos, 0);
 
     showLoading("Gerando resumo de viagem...");
     try {
-      await exportTravelDocx(`Resumo_Viagem_CRFAM_${selectedCity.toUpperCase()}`, {
+      await exportTravelDocx(`Resumo_Viagem_CRFAM_GERAL`, {
         travelFiscais,
-        travelPeriod,
+        travelPeriod: travelPeriod || calculatePeriod(""),
         uniqueCities,
         countFiscalizados,
         countIntimados,
         countAutuados,
         countNovos,
-        citySummaries: filteredCitySummaries
+        citySummaries
       });
     } catch(e) {
       console.error(e);
@@ -1578,7 +1556,7 @@ Não adicione cabeçalhos, introduções ou explicações. Retorne apenas o text
 
               <div>
                 <label className="text-sm font-extrabold text-slate-400 uppercase tracking-widest block mb-1">
-                  Período Operacional de Fiscalizações:
+                  Período de Fiscalização:
                 </label>
                 <div className="relative">
                   <input

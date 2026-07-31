@@ -1088,7 +1088,7 @@ export const exportTravelDocx = async (
         children: [
           new TableCell({
             shading: { fill: "F3F4F6" },
-            children: [createParagraph("Período de Atuação", { bold: true, size: 18 })],
+            children: [createParagraph("Período de Fiscalização", { bold: true, size: 18 })],
           }),
           new TableCell({
             children: [createParagraph(travelPeriod, { size: 18 })],
@@ -1148,7 +1148,7 @@ export const exportTravelDocx = async (
             children: [createParagraph("Total de termos de inspeções", { size: 18 })],
           }),
           new TableCell({
-            children: [createParagraph(`${countFiscalizados} empresa(s)`, { size: 18, bold: true })],
+            children: [createParagraph(`${countFiscalizados} termo(s)`, { size: 18, bold: true })],
           }),
         ],
       }),
