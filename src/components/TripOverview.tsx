@@ -23,7 +23,8 @@ import {
   Trash2,
   PenSquare,
   Cog,
-  Copy
+  Copy,
+  Key
 } from "lucide-react";
 import { collection, getDocs, doc, getDoc, db } from "../lib/supabase";
 import { Estabelecimento, TermoSanitario, EvalItem, EvalVariable, TechnicalResponsible } from "../types";
@@ -32,6 +33,8 @@ import { exportMunicipalDocx, exportTravelDocx, exportFullMunicipalDocx } from "
 import { defaultEvaluationItems } from "../lib/defaultEvalItems";
 import { defaultEvalVariables } from "../lib/defaultEvalVariables";
 import { useLoading } from "../contexts/LoadingContext";
+import { getEffectiveGeminiKey, hasEmbeddedGeminiKey } from "../utils/geminiKey";
+import GeminiApiKeyModal from "./GeminiApiKeyModal";
 
 export const formatCNPJ = (value: string): string => {
   if (!value) return "";
@@ -199,6 +202,7 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
   const [copiedJustificationId, setCopiedJustificationId] = useState<string | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
 
   const handleCopyJustification = (id: string, text: string) => {
     if (!text) return;
@@ -675,10 +679,15 @@ Não adicione cabeçalhos, introduções ou explicações. Retorne apenas o text
 
       let data;
       let useClientFallback = false;
-      const appKey = ((import.meta as any).env?.VITE_GEMINI_API_KEY as string) || "";
-      const isStaticEnv = window.location.hostname.includes("github.io") || window.location.hostname.includes("github.preview");
+      const effectiveKey = getEffectiveGeminiKey();
+      const isStaticEnv = window.location.hostname.includes("github.io") || 
+                          window.location.hostname.includes("github.preview") ||
+                          window.location.hostname.includes("pages.dev") ||
+                          window.location.hostname.includes("netlify.app") ||
+                          window.location.hostname.includes("vercel.app") ||
+                          window.location.protocol === "file:";
 
-      if (isStaticEnv && appKey) {
+      if (isStaticEnv) {
         useClientFallback = true;
       }
 
@@ -695,27 +704,19 @@ Não adicione cabeçalhos, introduções ou explicações. Retorne apenas o text
           if (response.ok) {
             data = await response.json();
           } else {
-            if (appKey) {
-              useClientFallback = true;
-            } else {
-              throw new Error("O servidor de IA está indisponível e nenhuma chave oculta da aplicação foi configurada.");
-            }
+            useClientFallback = true;
           }
         } catch (serverErr: any) {
           console.warn("Server call failed, attempting client fallback", serverErr);
-          if (appKey) {
-            useClientFallback = true;
-          } else {
-            throw serverErr;
-          }
+          useClientFallback = true;
         }
       }
 
       if (useClientFallback) {
-        if (!appKey) {
-          throw new Error("Chave de API do Gemini não configurada na aplicação (VITE_GEMINI_API_KEY ausente).");
+        if (!effectiveKey) {
+          throw new Error("Chave de API do Gemini não configurada. Clique em 'Configurar Chave IA' para inserir sua chave.");
         }
-        data = await runClientSideAutomark(payload, appKey);
+        data = await runClientSideAutomark(payload, effectiveKey);
       }
 
       if (data && Array.isArray(data.results)) {
@@ -1108,10 +1109,15 @@ Não adicione cabeçalhos, introduções ou explicações. Retorne apenas o text
       try {
         let correctedText = null;
         let useClientFallback = false;
-        const appKey = ((import.meta as any).env?.VITE_GEMINI_API_KEY as string) || "";
-        const isStaticEnv = window.location.hostname.includes("github.io") || window.location.hostname.includes("github.preview");
+        const effectiveKey = getEffectiveGeminiKey();
+        const isStaticEnv = window.location.hostname.includes("github.io") || 
+                            window.location.hostname.includes("github.preview") ||
+                            window.location.hostname.includes("pages.dev") ||
+                            window.location.hostname.includes("netlify.app") ||
+                            window.location.hostname.includes("vercel.app") ||
+                            window.location.protocol === "file:";
 
-        if (isStaticEnv && appKey) {
+        if (isStaticEnv) {
           useClientFallback = true;
         }
 
@@ -1125,24 +1131,20 @@ Não adicione cabeçalhos, introduções ou explicações. Retorne apenas o text
             if (response.ok) {
               const data = await response.json();
               if (data.correctedText) correctedText = data.correctedText;
-            } else if (appKey) {
-              useClientFallback = true;
             } else {
-              console.error("Falha ao corrigir com IA");
+              useClientFallback = true;
             }
           } catch (serverErr) {
             console.warn("Server correction failed, trying client fallback", serverErr);
-            if (appKey) {
-              useClientFallback = true;
-            } else {
-              console.error("Failed to auto-correct text", serverErr);
-            }
+            useClientFallback = true;
           }
         }
 
         if (useClientFallback) {
-          if (appKey) {
-            correctedText = await runClientSideCorrect(compiledText, appKey);
+          if (effectiveKey) {
+            correctedText = await runClientSideCorrect(compiledText, effectiveKey);
+          } else {
+            console.warn("Chave de API do Gemini não configurada para correção no cliente.");
           }
         }
 
@@ -1679,9 +1681,20 @@ Não adicione cabeçalhos, introduções ou explicações. Retorne apenas o text
                 <div className="bg-violet-50/50 border border-violet-150 rounded-2xl p-5 space-y-4">
                   <div className="flex items-center justify-between gap-4">
                     <div className="space-y-1">
-                      <div className="flex items-center gap-1.5">
-                        <Sparkles className="w-4.5 h-4.5 text-violet-600 animate-pulse shrink-0" />
-                        <span className="text-sm font-extrabold text-violet-950 uppercase tracking-wider block font-display">Marcar Automaticamente (IA e Heurística)</span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <div className="flex items-center gap-1.5">
+                          <Sparkles className="w-4.5 h-4.5 text-violet-600 animate-pulse shrink-0" />
+                          <span className="text-sm font-extrabold text-violet-950 uppercase tracking-wider block font-display">Marcar Automaticamente (IA e Heurística)</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setIsApiKeyModalOpen(true)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-violet-700 bg-violet-100 hover:bg-violet-200 border border-violet-200 rounded-lg transition-colors cursor-pointer"
+                          title="Configurar Chave de API do Gemini (Google AI)"
+                        >
+                          <Key className="w-3.5 h-3.5 text-violet-600" />
+                          <span>{getEffectiveGeminiKey() ? "Chave IA: Ativa" : "Configurar Chave IA"}</span>
+                        </button>
                       </div>
                       <p className="text-sm text-slate-500 font-medium leading-relaxed max-w-lg">
                         Cruza os dados de vistorias técnicas e observações de campo deste polo. Combina regras heurísticas rápidas com análise de IA avançada.
@@ -1714,22 +1727,30 @@ Não adicione cabeçalhos, introduções ou explicações. Retorne apenas o text
                   {autoMarkActive && (
                     <div className="space-y-4 pt-3 border-t border-violet-100">
                       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           {isAiLoading ? (
                             <span className="flex items-center gap-1.5 text-violet-700 font-bold animate-pulse">
                               <span className="inline-block w-2 h-2 rounded-full bg-violet-600 animate-ping" />
                               Análise Avançada de IA em andamento...
                             </span>
-                          ) : (
+                          ) : !aiError ? (
                             <span className="text-emerald-700 font-bold flex items-center gap-1">
                               <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
                               Análise refinada com IA concluída com sucesso!
                             </span>
-                          )}
+                          ) : null}
                           {aiError && (
-                            <span className="text-rose-600 font-bold">
-                              (Erro: {aiError})
-                            </span>
+                            <div className="flex items-center gap-1.5 text-rose-600 font-bold flex-wrap">
+                              <span>(Erro: {aiError})</span>
+                              <button
+                                type="button"
+                                onClick={() => setIsApiKeyModalOpen(true)}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 bg-rose-100 text-rose-800 hover:bg-rose-200 border border-rose-300 rounded text-[11px] font-bold cursor-pointer transition-colors"
+                              >
+                                <Key className="w-3 h-3" />
+                                Configurar Chave Gemini &rarr;
+                              </button>
+                            </div>
                           )}
                         </div>
                         <button
@@ -2190,6 +2211,14 @@ Não adicione cabeçalhos, introduções ou explicações. Retorne apenas o text
           </motion.div>
         )}
       </AnimatePresence>
+
+      <GeminiApiKeyModal
+        isOpen={isApiKeyModalOpen}
+        onClose={() => setIsApiKeyModalOpen(false)}
+        onKeySaved={() => {
+          setAiError(null);
+        }}
+      />
     </div>
   );
 }

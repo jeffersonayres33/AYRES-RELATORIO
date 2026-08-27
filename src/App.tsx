@@ -15,7 +15,8 @@ import {
   FileCheck2,
   Users,
   Settings,
-  Database
+  Database,
+  Key
 } from "lucide-react";
 import { Estabelecimento, TechnicalResponsible, TermoSanitario } from "./types";
 import { motion, AnimatePresence } from "motion/react";
@@ -25,11 +26,13 @@ import Dashboard from "./components/Dashboard";
 import Importer from "./components/Importer";
 import TripOverview from "./components/TripOverview";
 import AdminPanel from "./components/AdminPanel";
+import GeminiApiKeyModal from "./components/GeminiApiKeyModal";
 import { auth, signOut } from "./lib/supabase";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>("importacao");
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
+  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState<boolean>(false);
 
   const [showRlsWarning, setShowRlsWarning] = useState<boolean>(() => {
     return localStorage.getItem('supabase_rls_policy_active_warning') === 'true';
@@ -328,6 +331,17 @@ export default function App() {
 
               {/* Drawer footer operations */}
               <div className="p-4 border-t border-slate-100 bg-slate-50/70 space-y-2">
+                <button
+                  onClick={() => {
+                    setIsApiKeyModalOpen(true);
+                    setMobileMenuOpen(false);
+                  }}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-violet-50 hover:bg-violet-100 text-violet-700 hover:text-violet-900 border border-violet-200 rounded-xl text-sm font-black transition-all shadow-xs cursor-pointer active:scale-98"
+                >
+                  <Key className="w-4 h-4 text-violet-600" />
+                  Configurar Chave IA (Gemini)
+                </button>
+
                 {hasData && (
                   <button
                     onClick={() => {
@@ -406,6 +420,15 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsApiKeyModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-violet-50 hover:bg-violet-100 text-violet-700 hover:text-violet-900 border border-violet-200 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs active:scale-95"
+              title="Configurar Chave de API do Gemini (Google AI)"
+            >
+              <Key className="w-3.5 h-3.5 text-violet-600" />
+              <span className="hidden sm:inline">Chave IA</span>
+            </button>
+
             <h2 className="text-sm font-black text-violet-600 uppercase font-display tracking-tight hidden sm:flex items-center gap-2 px-3 py-1 bg-violet-50 rounded-lg">
               <span>{filteredTabs.find(t => t.id === activeTab)?.label || allTabs.find(t => t.id === activeTab)?.label}</span>
             </h2>
@@ -551,6 +574,11 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <GeminiApiKeyModal
+        isOpen={isApiKeyModalOpen}
+        onClose={() => setIsApiKeyModalOpen(false)}
+      />
     </div>
   );
 }
