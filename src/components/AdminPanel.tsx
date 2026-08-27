@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { collection, getDocs, doc, setDoc, deleteDoc, db, auth, getDoc } from "../lib/supabase";
-import { Users, UserPlus, Trash2, Mail, Shield, Clock, Settings, FileText, FileSearch, DatabaseZap, Loader2, Save, Key, Check, X } from "lucide-react";
+import { Users, UserPlus, Trash2, Mail, Shield, Clock, Settings, FileText, FileSearch, DatabaseZap, Save, Key, Check, X } from "lucide-react";
 import GeneralEvalConfig from "./GeneralEvalConfig";
 import TemplateConfig from "./TemplateConfig";
 import CustomVariables from "./CustomVariables";
@@ -8,6 +8,7 @@ import CRFMappingConfig from "./CRFMappingConfig";
 import NameMappingConfig from "./NameMappingConfig";
 import DatabaseOptimizer from "./DatabaseOptimizer";
 import BackupRestore from "./BackupRestore";
+import GeminiConfigTab from "./GeminiConfigTab";
 import { useLoading } from "../contexts/LoadingContext";
 
 interface AuthorizedEmail {
@@ -35,6 +36,7 @@ export default function AdminPanel({ currentUserRole = "user", currentUserAllowe
   
   const allSubTabs = React.useMemo(() => [
     { id: "users", label: "Usuários", icon: Users },
+    { id: "gemini", label: "Chave de IA (Gemini)", icon: Key },
     { id: "eval", label: "Construtor da Avaliação Geral", icon: FileText },
     { id: "template", label: "Modelo de Relatório", icon: FileSearch },
     { id: "fiscais", label: "Mapeamento Fiscais/CRF", icon: Settings },
@@ -103,7 +105,7 @@ export default function AdminPanel({ currentUserRole = "user", currentUserAllowe
       
       const allowedTabsList = newRole === "moderator" 
         ? newAllowedTabs 
-        : (newRole === "admin" ? ["users", "eval", "template", "fiscais", "database", "backup"] : []);
+        : (newRole === "admin" ? ["users", "gemini", "eval", "template", "fiscais", "database", "backup"] : []);
 
       await setDoc(docRef, {
         email: sanitizedEmail,
@@ -135,7 +137,7 @@ export default function AdminPanel({ currentUserRole = "user", currentUserAllowe
         const udata = snap.data();
         const allowedTabsList = editingRoleValue === "moderator"
           ? editingAllowedTabsValue
-          : (editingRoleValue === "admin" ? ["users", "eval", "template", "fiscais", "database", "backup"] : []);
+          : (editingRoleValue === "admin" ? ["users", "gemini", "eval", "template", "fiscais", "database", "backup"] : []);
         
         udata.role = editingRoleValue;
         udata.allowedTabs = allowedTabsList;
@@ -298,6 +300,7 @@ export default function AdminPanel({ currentUserRole = "user", currentUserAllowe
                         <div className="space-y-2">
                           {[
                             { id: "users", label: "Usuários" },
+                            { id: "gemini", label: "Chave de IA (Gemini)" },
                             { id: "eval", label: "Construtor da Avaliação Geral" },
                             { id: "template", label: "Modelo de Relatório" },
                             { id: "fiscais", label: "Mapeamento Fiscais/CRF" },
@@ -401,6 +404,7 @@ export default function AdminPanel({ currentUserRole = "user", currentUserAllowe
                                    {u.allowedTabs.map(tabId => {
                                      const labelMap: Record<string, string> = {
                                        users: "Usuários",
+                                       gemini: "IA (Gemini)",
                                        eval: "Avaliação",
                                        template: "Modelos",
                                        fiscais: "Fiscais",
@@ -457,7 +461,7 @@ export default function AdminPanel({ currentUserRole = "user", currentUserAllowe
                                  >
                                    Confirmar
                                  </button>
-                               </div>
+                                </div>
                              ) : (
                                <button
                                  onClick={() => setConfirmDeleteUser(u.email)}
@@ -501,6 +505,7 @@ export default function AdminPanel({ currentUserRole = "user", currentUserAllowe
                                    <div className="space-y-1">
                                      {[
                                        { id: "users", label: "Usuários" },
+                                       { id: "gemini", label: "Chave de IA (Gemini)" },
                                        { id: "eval", label: "Construtor da Avaliação Geral" },
                                        { id: "template", label: "Modelo de Relatório" },
                                        { id: "fiscais", label: "Mapeamento Fiscais/CRF" },
@@ -593,6 +598,8 @@ export default function AdminPanel({ currentUserRole = "user", currentUserAllowe
              </div>
           </div>
         </div>
+      ) : adminTab === "gemini" ? (
+        <GeminiConfigTab />
       ) : adminTab === "eval" ? (
         <GeneralEvalConfig />
       ) : adminTab === "fiscais" ? (

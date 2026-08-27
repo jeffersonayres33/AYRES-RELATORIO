@@ -18,7 +18,7 @@ export const db = { type: 'supabase_db' };
 // Helpers to extract postgres-friendly table names from Firestore collection paths
 function getTableName(collectionPath: string): string {
   const clean = collectionPath.replace(/\//g, '_');
-  if (clean === 'settings_reportTemplate_chunks') {
+  if (clean === 'settings_reportTemplate_chunks' || clean === 'app_settings') {
     return 'settings_chunks';
   }
   return clean;
@@ -36,8 +36,9 @@ export function collection(dbInstance: any, ...paths: string[]) {
 export function doc(dbInstance: any, ...paths: string[]) {
   const fullPath = paths.join('/');
   const segments = fullPath.split('/');
-  const id = segments.pop() || '';
+  const rawId = segments.pop() || '';
   const collectionName = segments.join('/');
+  const id = collectionName === 'app_settings' ? `app_settings_${rawId}` : rawId;
   return {
     type: 'doc',
     collection: collectionName,
