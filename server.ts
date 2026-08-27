@@ -43,7 +43,7 @@ Para critérios genéricos ou padrão como apelos ou parágrafos de conclusão d
 Considere termos técnicos equivalentes, sinônimos, e abreviações comuns de fiscalização sanitária brasileira (ex: "AFE", "Alvará", "RDC 44", "Receita controlada", "Portaria 344", "UBS", "Posto de Saúde", "CAF", "CFT", "REMUME", "Lâminas", "Laudos", "Laboratório", "Supermercado").
 
 Determine quais itens de avaliação devem ser marcados (matched: true ou false) e forneça uma justificativa concisa (até 1 frase em português) citando as evidências ou dados específicos do estabelecimento/termo correspondente.
-IMPORTANTE: Sempre que citar ou basear a decisão em um estabelecimento específico, inclua obrigatoriamente o seu Nome Fantasia ou Razão Social juntamente com o respectivo CNPJ do estabelecimento no texto da justificativa (exemplo: "Identificada ausência de RT na Farmácia Silva (CNPJ: 12.345.678/0001-90) de acordo com as observações do fiscal.").`;
+IMPORTANTE: Sempre que citar ou basear a decisão em um estabelecimento específico, inclua obrigatoriamente o seu Nome Fantasia ou Razão Social juntamente com o respectivo CNPJ do estabelecimento devidamente formatado com máscara oficial (exemplo: "Identificada ausência de RT na Farmácia Silva (CNPJ: 12.345.678/0001-90) de acordo com as observações do fiscal.").`;
 
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
@@ -72,12 +72,28 @@ IMPORTANTE: Sempre que citar ou basear a decisão em um estabelecimento específ
       });
 
       // Parse and return
-      let parsedResults;
+      let parsedResults: { results: any[] } = { results: [] };
       try {
         parsedResults = JSON.parse(response.text || "{}");
       } catch (parseErr) {
         console.error("Failed to parse Gemini response as JSON", response.text);
         parsedResults = { results: [] };
+      }
+
+      if (Array.isArray(parsedResults.results)) {
+        parsedResults.results = parsedResults.results.map((r: any) => {
+          if (typeof r.justification === "string") {
+            // Apply CNPJ mask to any unmasked 14-digit sequence
+            let masked = r.justification.replace(/\b\d{14}\b/g, (m: string) => {
+              return `${m.slice(0, 2)}.${m.slice(2, 5)}.${m.slice(5, 8)}/${m.slice(8, 12)}-${m.slice(12, 14)}`;
+            });
+            masked = masked.replace(/\b(\d{2})[.\s]?(\d{3})[.\s]?(\d{3})[\/\s]?(\d{4})[-\s]?(\d{2})\b/g, (_m: string, p1: string, p2: string, p3: string, p4: string, p5: string) => {
+              return `${p1}.${p2}.${p3}/${p4}-${p5}`;
+            });
+            return { ...r, justification: masked };
+          }
+          return r;
+        });
       }
 
       res.json(parsedResults);

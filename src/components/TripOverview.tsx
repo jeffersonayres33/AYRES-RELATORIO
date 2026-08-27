@@ -22,7 +22,8 @@ import {
   Plus,
   Trash2,
   PenSquare,
-  Cog
+  Cog,
+  Copy
 } from "lucide-react";
 import { collection, getDocs, doc, getDoc, db } from "../lib/supabase";
 import { Estabelecimento, TermoSanitario, EvalItem, EvalVariable, TechnicalResponsible } from "../types";
@@ -31,6 +32,27 @@ import { exportMunicipalDocx, exportTravelDocx, exportFullMunicipalDocx } from "
 import { defaultEvaluationItems } from "../lib/defaultEvalItems";
 import { defaultEvalVariables } from "../lib/defaultEvalVariables";
 import { useLoading } from "../contexts/LoadingContext";
+
+export const formatCNPJ = (value: string): string => {
+  if (!value) return "";
+  const digits = value.replace(/\D/g, "").slice(0, 14);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 5) return `${digits.slice(0, 2)}.${digits.slice(2)}`;
+  if (digits.length <= 8) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5)}`;
+  if (digits.length <= 12) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8)}`;
+  return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12, 14)}`;
+};
+
+export const formatTextWithCnpjMask = (text: string): string => {
+  if (!text) return "";
+  // 1) Replace 14-digit continuous sequences
+  let formatted = text.replace(/\b\d{14}\b/g, (match) => formatCNPJ(match));
+  // 2) Replace unmasked or semi-masked CNPJs (e.g. 12345678/000190 or 12.345.678000190)
+  formatted = formatted.replace(/\b(\d{2})[.\s]?(\d{3})[.\s]?(\d{3})[\/\s]?(\d{4})[-\s]?(\d{2})\b/g, (_match, p1, p2, p3, p4, p5) => {
+    return `${p1}.${p2}.${p3}/${p4}-${p5}`;
+  });
+  return formatted;
+};
 
 interface TripOverviewProps {
   estabelecimentos: Estabelecimento[];
@@ -174,8 +196,22 @@ export default function TripOverview({ estabelecimentos, termos, rts = [] }: Tri
 
   const [dbEvalItems, setDbEvalItems] = useState<EvalItem[]>([]);
   const [aiJustifications, setAiJustifications] = useState<Record<string, string>>({});
+  const [copiedJustificationId, setCopiedJustificationId] = useState<string | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+
+  const handleCopyJustification = (id: string, text: string) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedJustificationId(id);
+      setTimeout(() => {
+        setCopiedJustificationId(prev => prev === id ? null : prev);
+      }, 2500);
+    }).catch(err => {
+      console.error("Erro ao copiar justificativa:", err);
+    });
+  };
+
   const runClientSideAutomark = async (payload: any, apiKeyToUse: string) => {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKeyToUse}`;
     const prompt = `Você é um assistente analista especializado em fiscalização técnica do CRF/AM.
@@ -195,7 +231,7 @@ Para critérios genéricos ou padrão como apelos ou parágrafos de conclusão d
 Considere termos técnicos equivalentes, sinônimos, e abreviações comuns de fiscalização sanitária brasileira (ex: "AFE", "Alvará", "RDC 44", "Receita controlada", "Portaria 344", "UBS", "Posto de Saúde", "CAF", "CFT", "REMUME", "Lâminas", "Laudos", "Laboratório", "Supermercado").
 
 Determine quais itens de avaliação devem ser marcados (matched: true ou false) e forneça uma justificativa concisa (até 1 frase em português) citando as evidências ou dados específicos do estabelecimento/termo correspondente.
-IMPORTANTE: Sempre que citar ou basear a decisão em um estabelecimento específico, inclua obrigatoriamente o seu Nome Fantasia ou Razão Social juntamente com o respectivo CNPJ do estabelecimento no texto da justificativa (exemplo: "Identificada ausência de RT na Farmácia Silva (CNPJ: 12.345.678/0001-90) de acordo com as observações do fiscal.").`;
+IMPORTANTE: Sempre que citar ou basear a decisão em um estabelecimento específico, inclua obrigatoriamente o seu Nome Fantasia ou Razão Social juntamente com o respectivo CNPJ do estabelecimento devidamente formatado com máscara oficial (exemplo: "Identificada ausência de RT na Farmácia Silva (CNPJ: 12.345.678/0001-90) de acordo com as observações do fiscal.").`;
 
     const body = {
       contents: [
@@ -251,7 +287,14 @@ IMPORTANTE: Sempre que citar ou basear a decisão em um estabelecimento específ
     }
 
     try {
-      return JSON.parse(textResponse);
+      const parsed = JSON.parse(textResponse);
+      if (parsed && Array.isArray(parsed.results)) {
+        parsed.results = parsed.results.map((r: any) => ({
+          ...r,
+          justification: typeof r.justification === "string" ? formatTextWithCnpjMask(r.justification) : r.justification
+        }));
+      }
+      return parsed;
     } catch (err) {
       console.error("Failed to parse client-side Gemini response as JSON", textResponse);
       throw new Error("Erro de formatação na resposta da IA.");
@@ -471,7 +514,7 @@ Não adicione cabeçalhos, introduções ou explicações. Retorne apenas o text
     // Apply standard labs and hospital state setters
     const labEstabs = cityEstabs.filter(e => /laborat[óo]rio|analises.*clinicas/i.test(`${e.fantasia} ${e.razaoSocial} ${e.nomeArea || ""}`));
     if (labEstabs.length > 0) {
-      setLabsInfra(labEstabs.map(le => ({ nome: le.fantasia.toUpperCase(), cnpj: le.cnpj })));
+      setLabsInfra(labEstabs.map(le => ({ nome: le.fantasia.toUpperCase(), cnpj: formatCNPJ(le.cnpj) })));
       setLabsLaminas(labEstabs.map(le => ({ nome: le.fantasia.toUpperCase() })));
     } else {
       setLabsInfra([{ nome: "SÃO JOSÉ", cnpj: "04.091.222/0001-90" }]);
@@ -796,7 +839,7 @@ Não adicione cabeçalhos, introduções ou explicações. Retorne apenas o text
 
     paragraphs.push(finalIntro);
 
-    const formattedLabsInfra = labsInfra.map(l => `Laboratório ${l.nome.toUpperCase()} (CNPJ ${l.cnpj})`).join(", ");
+    const formattedLabsInfra = labsInfra.map(l => `Laboratório ${l.nome.toUpperCase()} (CNPJ ${formatCNPJ(l.cnpj)})`).join(", ");
     const formattedLabsLaminas = labsLaminas.map(l => `Laboratório ${l.nome.toUpperCase()}`).join(", ");
     const formattedHospitals = hospitals.map(h => `Unidade Hospitalar de ${h.nome.toUpperCase()}`).join(" e ");
     
@@ -1759,8 +1802,8 @@ Não adicione cabeçalhos, introduções ou explicações. Retorne apenas o text
                               const variablesInThisItem = getRequiredVars(textToSearch);
                               const hasCustomVariables = variablesInThisItem.length > 0;
 
-                              return (
-                                <div key={item.id} className="p-4 bg-slate-55/70 border border-slate-150 border-r-4 border-r-emerald-400 hover:border-slate-300 rounded-2xl transition-colors block">
+                               return (
+                                <div key={item.id} className="p-4 bg-slate-55/70 border border-slate-150 border-r-4 border-r-emerald-400 hover:border-slate-300 rounded-2xl transition-colors block select-text">
                                   <div className="flex items-start gap-3.5">
                                     <input 
                                       id={`eval-item-${item.id}`}
@@ -1769,11 +1812,11 @@ Não adicione cabeçalhos, introduções ou explicações. Retorne apenas o text
                                       checked={isChecked}
                                       onChange={(e) => setEvalItems({ ...evalItems, [item.id]: e.target.checked })}
                                     />
-                                    <div className="flex-1 select-none">
-                                      <label htmlFor={`eval-item-${item.id}`} className="cursor-pointer">
-                                        <span className="font-extrabold text-slate-900 font-display block text-sm">{index + 1}. {item.title}</span>
+                                    <div className="flex-1 select-text">
+                                      <label htmlFor={`eval-item-${item.id}`} className="cursor-pointer select-text">
+                                        <span className="font-extrabold text-slate-900 font-display block text-sm select-text">{index + 1}. {item.title}</span>
                                         {item.description && (
-                                          <p className="text-sm text-slate-500 mt-1 leading-relaxed">
+                                          <p className="text-sm text-slate-500 mt-1 leading-relaxed select-text">
                                             {item.description}
                                           </p>
                                         )}
@@ -1788,17 +1831,43 @@ Não adicione cabeçalhos, introduções ou explicações. Retorne apenas o text
                                       </button>
                                       
                                       {isExpanded && (
-                                        <div className="mt-2 p-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-600 italic leading-relaxed">
+                                        <div className="mt-2 p-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-600 italic leading-relaxed select-text cursor-text selection:bg-violet-200 selection:text-violet-950">
                                           {item.paragraph}
                                         </div>
                                       )}
 
                                       {aiJustifications[item.id] && (
-                                        <div className="mt-2.5 p-2.5 bg-violet-50/70 border border-violet-100 rounded-xl text-xs text-violet-850 flex items-start gap-1.5 leading-relaxed animate-in fade-in duration-250">
-                                          <Sparkles className="w-3.5 h-3.5 text-violet-600 shrink-0 mt-0.5" />
-                                          <div>
-                                            <strong className="text-violet-950">Justificativa da IA:</strong> {aiJustifications[item.id]}
+                                        <div className="mt-2.5 p-3 bg-violet-50/90 border border-violet-200/80 rounded-xl text-xs text-violet-950 flex items-start justify-between gap-3 leading-relaxed animate-in fade-in duration-250 select-text">
+                                          <div className="flex items-start gap-2 flex-1 select-text cursor-text">
+                                            <Sparkles className="w-4 h-4 text-violet-600 shrink-0 mt-0.5" />
+                                            <div className="select-text cursor-text">
+                                              <strong className="text-violet-950 font-bold">Justificativa da IA:</strong>{" "}
+                                              <span className="select-text cursor-text text-slate-800 selection:bg-violet-200 selection:text-violet-950">
+                                                {formatTextWithCnpjMask(aiJustifications[item.id])}
+                                              </span>
+                                            </div>
                                           </div>
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleCopyJustification(item.id, formatTextWithCnpjMask(aiJustifications[item.id]));
+                                            }}
+                                            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-violet-700 hover:text-violet-900 bg-white hover:bg-violet-100/90 border border-violet-200 rounded-lg shadow-2xs transition-all shrink-0 cursor-pointer active:scale-95"
+                                            title="Copiar justificativa para a área de transferência"
+                                          >
+                                            {copiedJustificationId === item.id ? (
+                                              <>
+                                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                                <span className="text-emerald-700 font-bold text-[11px]">Copiado!</span>
+                                              </>
+                                            ) : (
+                                              <>
+                                                <Copy className="w-3.5 h-3.5 text-violet-600" />
+                                                <span className="text-[11px]">Copiar</span>
+                                              </>
+                                            )}
+                                          </button>
                                         </div>
                                       )}
                                     </div>
@@ -1836,7 +1905,9 @@ Não adicione cabeçalhos, introduções ou explicações. Retorne apenas o text
                                                     {records.map((record, idx) => (
                                                       <div key={idx} className="flex gap-2 items-start relative border-l-2 border-slate-200 pl-3">
                                                         <div className="flex-1 grid gap-2 grid-cols-1 md:grid-cols-2">
-                                                          {(v.fields || []).map(f => (
+                                                          {(v.fields || []).map(f => {
+                                                             const isCnpj = f.key?.toLowerCase().includes("cnpj") || f.label?.toLowerCase().includes("cnpj") || f.placeholder?.toLowerCase().includes("cnpj");
+                                                             return (
                                                              <div key={f.key} className="flex flex-col gap-1">
                                                                 {f.inputType === "radio" ? (
                                                                    <div className="bg-slate-50 p-2 border border-slate-200 rounded-lg">
@@ -1864,18 +1935,20 @@ Não adicione cabeçalhos, introduções ou explicações. Retorne apenas o text
                                                                 ) : (
                                                                     <input 
                                                                       type="text" 
-                                                                      placeholder={f.placeholder || f.label} 
+                                                                      placeholder={isCnpj ? `${f.placeholder || f.label} (00.000.000/0000-00)` : (f.placeholder || f.label)} 
                                                                       value={record[f.key] || ""} 
+                                                                      maxLength={isCnpj ? 18 : undefined}
                                                                       onChange={(e) => {
+                                                                        const val = isCnpj ? formatCNPJ(e.target.value) : e.target.value;
                                                                         const newRecords = [...records];
-                                                                        newRecords[idx] = { ...newRecords[idx], [f.key]: e.target.value };
+                                                                        newRecords[idx] = { ...newRecords[idx], [f.key]: val };
                                                                         setCustomVariablesData({ ...customVariablesData, [v.id]: newRecords });
                                                                       }}
                                                                       className="w-full text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 bg-slate-50 focus:bg-white transition-all h-full" 
                                                                     />
                                                                 )}
                                                              </div>
-                                                          ))}
+                                                           );})}
                                                         </div>
                                                         <button 
                                                           onClick={() => {
@@ -1941,11 +2014,12 @@ Não adicione cabeçalhos, introduções ou explicações. Retorne apenas o text
                                       />
                                       <input 
                                         type="text" 
-                                        placeholder="CNPJ" 
+                                        placeholder="CNPJ (00.000.000/0000-00)" 
                                         value={lab.cnpj} 
+                                        maxLength={18}
                                         onChange={(e) => { 
                                           const n = [...labsInfra]; 
-                                          n[idx].cnpj = e.target.value; 
+                                          n[idx].cnpj = formatCNPJ(e.target.value); 
                                           setLabsInfra(n); 
                                         }} 
                                         className="w-1/3 text-sm px-3 py-1.5 border border-slate-200 rounded-lg outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 bg-slate-50 focus:bg-white transition-all" 
